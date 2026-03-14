@@ -20,18 +20,18 @@ This repository explores how AI agents can:
 **Effect:** Thermal vision reveals heat signatures on keypad buttons after guards enter codes
 
 ### Visual Characteristics
-- Heat signatures appear as orange/yellow glow on pressed buttons
+- Heat signatures appear as layered thermal glow on pressed buttons
 - Intensity fades over ~30 seconds (exponential decay)
 - More recent presses are brighter
-- Thermal color gradient: cold (blue) → warm (orange/yellow)
+- Thermal color gradient: deep blue-black → cobalt → cyan → green → yellow → near-white
 
 ### Implementation Targets
 
 | Platform | Purpose | Status |
 |----------|---------|--------|
-| JavaScript | Browser demo, reference implementation | Pending |
-| Python (LVGL) | Embedded systems (ESP32, etc.) | Pending |
-| Rust (embedded-graphics) | Embedded systems (STM32, etc.) | Pending |
+| JavaScript | Browser demo, reference implementation | Complete |
+| Python (LVGL + desktop demo) | Embedded systems and local validation | Complete |
+| Rust (embedded-graphics) | Embedded systems (STM32, etc.) | Complete |
 
 ### Core Components
 
@@ -41,12 +41,12 @@ This repository explores how AI agents can:
    - Button state management
 
 2. **Rendering Layer** (platform-specific)
-   - Concentric circle glow effect (8-12 rings)
+   - Soft bloom-style thermal glow
    - Color palette mapping
    - Animation loop
 
 3. **Color Palettes**
-   - **Splinter Cell** (default): dark blue → cyan → green → yellow → orange
+   - **Splinter Cell** (default): deep blue-black → cobalt → cyan → green → yellow → near-white
    - **Classic**: blue → cyan → yellow → orange → red
    - **Ironbow**: professional thermal camera look
    - **Hot/Cold**: blue → white → red

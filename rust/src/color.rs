@@ -41,7 +41,7 @@ impl ColorStop {
 /// All palettes are designed to show heat intensity through color gradients.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ThermalPalette {
-    /// Splinter Cell style - dark blue through cyan, green, yellow to orange.
+    /// Splinter Cell style - deep blue through cyan, green, yellow to near-white.
     ///
     /// This is the classic Splinter Cell (2002) thermal vision look.
     /// Matches the in-game thermal goggle effect.
@@ -75,7 +75,7 @@ impl ThermalPalette {
     #[inline]
     pub fn stops(&self) -> &'static [ColorStop] {
         match self {
-            ThermalPalette::SplinterCell => &SPINTER_CELL_STOPS,
+            ThermalPalette::SplinterCell => &SPLINTER_CELL_STOPS,
             ThermalPalette::Classic => &CLASSIC_STOPS,
             ThermalPalette::Ironbow => &IRONBOW_STOPS,
             ThermalPalette::HotCold => &HOT_COLD_STOPS,
@@ -85,8 +85,8 @@ impl ThermalPalette {
 
 /// Splinter Cell palette color stops.
 ///
-/// Dark blue/black → purple → cyan/teal → green → yellow-green → yellow → orange
-static SPINTER_CELL_STOPS: [ColorStop; 7] = [
+/// Deep blue-black → cobalt → cyan → green → yellow → near-white
+static SPLINTER_CELL_STOPS: [ColorStop; 7] = [
     ColorStop::new(0.00, 5, 8, 32),
     ColorStop::new(0.20, 12, 42, 110),
     ColorStop::new(0.40, 20, 120, 170),

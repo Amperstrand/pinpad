@@ -42,17 +42,17 @@ cd javascript && python3 -m http.server 8080
 # Visit http://localhost:8080/thermal-pinpad.html
 ```
 
-### Python (LVGL for Embedded Linux)
-**Target**: Raspberry Pi with touchscreen, or similar embedded Linux systems.
+### Python (Embedded + Desktop)
+**Target**: Raspberry Pi/touch targets via LVGL, plus desktop parity demo via pygame.
 
 ```bash
 # Install dependencies
 pip install -r python/requirements.txt
 
-# Run LVGL demo (for embedded Linux with touchscreen)
+# Run LVGL demo (embedded Linux with touchscreen)
 python python/lvgl_demo.py
 
-# Or run pygame demo (for desktop testing)
+# Or run pygame demo (desktop parity testing)
 python python/thermal_pinpad.py
 ```
 
@@ -68,35 +68,6 @@ cargo run --features simulator
 # For actual hardware, use your preferred flash tool
 # The library is no_std compatible and uses fixed-point math
 cargo build --release --target thumbv7em-none-eabihf
-```
-
-## Quick Start (Legacy)
-
-### JavaScript (Browser Demo)
-
-```bash
-# Just open in browser
-open javascript/thermal-pinpad.html
-```
-
-Or serve locally:
-```bash
-cd javascript
-python3 -m http.server 8080
-# Open http://localhost:8080/thermal-pinpad.html
-```
-
-### Python (Tkinter Demo)
-
-```bash
-python3 python/thermal_pinpad.py
-```
-
-### Rust (PC Simulator)
-
-```bash
-cd rust
-cargo run --features simulator
 ```
 
 ## Usage
