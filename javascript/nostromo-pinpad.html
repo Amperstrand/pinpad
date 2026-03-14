@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nostromo Door Control Pinpad</title>
+    <style>
+        :root {
+            --panel-background: #E8E6E1;
+            --button-blue: #005A9C;
+            --button-red: #B00000;
+            --indicator-amber: #FFB000;
+            --indicator-green: #00FF41;
+            --text: #1A1A1A;
+            --wear: #3A3530;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: var(--text);
+            font-family: "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+            background:
+                radial-gradient(circle at 18% 12%, rgba(58, 53, 48, 0.25), transparent 52%),
+                radial-gradient(circle at 82% 84%, rgba(58, 53, 48, 0.2), transparent 48%),
+                linear-gradient(160deg, #b4afa7 0%, #d3cec6 32%, #8f8880 100%);
+        }
+
+        .panel {
+            width: min(420px, 100%);
+            border-radius: 18px;
+            padding: 18px;
+            background: linear-gradient(165deg, #f3f1ec 0%, var(--panel-background) 45%, #d5d2cb 100%);
+            border: 2px solid rgba(58, 53, 48, 0.55);
+            box-shadow:
+                inset 0 4px 4px rgba(255, 255, 255, 0.7),
+                inset 0 -8px 12px rgba(58, 53, 48, 0.35),
+                0 16px 30px rgba(0, 0, 0, 0.35);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .panel::before,
+        .panel::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .panel::before {
+            background:
+                repeating-linear-gradient(90deg, rgba(58, 53, 48, 0.08) 0 1px, transparent 1px 7px),
+                repeating-linear-gradient(0deg, rgba(58, 53, 48, 0.05) 0 1px, transparent 1px 9px);
+            mix-blend-mode: multiply;
+            opacity: 0.6;
+        }
+
+        .panel::after {
+            background:
+                radial-gradient(circle at 12% 16%, rgba(58, 53, 48, 0.22), transparent 28%),
+                radial-gradient(circle at 84% 22%, rgba(58, 53, 48, 0.16), transparent 34%),
+                radial-gradient(circle at 30% 82%, rgba(58, 53, 48, 0.2), transparent 30%),
+                radial-gradient(circle at 88% 90%, rgba(58, 53, 48, 0.24), transparent 36%);
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            font-weight: 700;
+            font-size: 12px;
+        }
+
+        .status {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .lamp {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 1px solid rgba(26, 26, 26, 0.75);
+            box-shadow:
+                inset 0 1px 2px rgba(255, 255, 255, 0.35),
+                inset 0 -2px 2px rgba(0, 0, 0, 0.45);
+            opacity: 0.32;
+            transition: opacity 120ms linear, box-shadow 120ms linear;
+        }
+
+        .lamp.amber {
+            background: var(--indicator-amber);
+        }
+
+        .lamp.green {
+            background: var(--indicator-green);
+        }
+
+        .lamp.active {
+            opacity: 1;
+        }
+
+        .lamp.amber.active {
+            box-shadow:
+                0 0 10px rgba(255, 176, 0, 0.65),
+                inset 0 1px 2px rgba(255, 255, 255, 0.4),
+                inset 0 -2px 2px rgba(0, 0, 0, 0.4);
+        }
+
+        .lamp.green.active {
+            box-shadow:
+                0 0 10px rgba(0, 255, 65, 0.55),
+                inset 0 1px 2px rgba(255, 255, 255, 0.4),
+                inset 0 -2px 2px rgba(0, 0, 0, 0.4);
+        }
+
+        .display {
+            border: 1px solid rgba(58, 53, 48, 0.7);
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-bottom: 14px;
+            min-height: 48px;
+            background:
+                linear-gradient(180deg, rgba(58, 53, 48, 0.16) 0%, rgba(255, 255, 255, 0.35) 35%, rgba(58, 53, 48, 0.19) 100%),
+                var(--panel-background);
+            box-shadow: inset 0 2px 2px rgba(58, 53, 48, 0.3);
+        }
+
+        .code {
+            letter-spacing: 0.22em;
+            font-size: 20px;
+            font-weight: 700;
+            min-height: 24px;
+        }
+
+        .message {
+            font-size: 12px;
+            margin-top: 4px;
+            opacity: 0.85;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .keypad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .key {
+            height: 64px;
+            border-radius: 8px;
+            border: 1px solid rgba(26, 26, 26, 0.8);
+            color: #f7fbff;
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            cursor: pointer;
+            position: relative;
+            background:
+                linear-gradient(170deg, rgba(130, 185, 230, 0.55) 0%, rgba(0, 90, 156, 0.98) 42%, #003b66 100%);
+            box-shadow:
+                0 4px 0 #022944,
+                0 8px 12px rgba(0, 0, 0, 0.35),
+                inset 0 1px 3px rgba(255, 255, 255, 0.5),
+                inset 0 -4px 8px rgba(0, 0, 0, 0.42);
+            transform: translateY(0);
+            transition: transform 60ms linear, box-shadow 60ms linear;
+            user-select: none;
+        }
+
+        .key::before {
+            content: "";
+            position: absolute;
+            inset: 8px;
+            border-radius: 5px;
+            background: radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.06) 60%, transparent 100%);
+            mix-blend-mode: screen;
+            pointer-events: none;
+        }
+
+        .key::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: 8px;
+            background:
+                linear-gradient(90deg, rgba(58, 53, 48, 0.12) 0 2px, transparent 2px calc(100% - 2px), rgba(58, 53, 48, 0.16) calc(100% - 2px)),
+                linear-gradient(0deg, rgba(58, 53, 48, 0.1) 0 2px, transparent 2px calc(100% - 2px), rgba(255, 255, 255, 0.16) calc(100% - 2px));
+            pointer-events: none;
+        }
+
+        .key.control {
+            background:
+                linear-gradient(170deg, rgba(200, 235, 255, 0.5) 0%, rgba(0, 90, 156, 0.98) 40%, #013155 100%);
+        }
+
+        .key.emergency {
+            background:
+                linear-gradient(170deg, rgba(255, 150, 150, 0.55) 0%, rgba(176, 0, 0, 0.96) 42%, #5f0000 100%);
+            box-shadow:
+                0 4px 0 #380000,
+                0 8px 12px rgba(0, 0, 0, 0.35),
+                inset 0 1px 3px rgba(255, 220, 220, 0.55),
+                inset 0 -4px 8px rgba(0, 0, 0, 0.42);
+        }
+
+        .key.pressed {
+            transform: translateY(4px);
+            box-shadow:
+                0 1px 0 #022944,
+                0 2px 4px rgba(0, 0, 0, 0.35),
+                inset 0 1px 3px rgba(255, 255, 255, 0.35),
+                inset 0 -1px 4px rgba(0, 0, 0, 0.55);
+        }
+
+        .footer {
+            margin-top: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            font-size: 11px;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+        }
+
+        .demo-btn {
+            border: 1px solid rgba(26, 26, 26, 0.7);
+            background: rgba(232, 230, 225, 0.5);
+            border-radius: 6px;
+            padding: 6px 10px;
+            cursor: pointer;
+            font: inherit;
+            color: var(--text);
+        }
+
+        @media (max-width: 460px) {
+            .key {
+                height: 58px;
+                font-size: 22px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <section class="panel" aria-label="Nostromo door control pinpad">
+        <div class="header">
+            <span>Door Control</span>
+            <div class="status">
+                <span id="amberLamp" class="lamp amber" aria-label="processing indicator"></span>
+                <span id="greenLamp" class="lamp green active" aria-label="ready indicator"></span>
+            </div>
+        </div>
+
+        <div class="display">
+            <div id="codeDisplay" class="code"></div>
+            <div id="messageDisplay" class="message">Ready</div>
+        </div>
+
+        <div id="keypad" class="keypad" role="group" aria-label="pinpad keys"></div>
+
+        <div class="footer">
+            <span>Keys: 0-9, C, E</span>
+            <button id="demoBtn" class="demo-btn" type="button">Demo Mode</button>
+        </div>
+    </section>
+
+    <script>
+        (() => {
+            const COLORS = {
+                panelBackground: '#E8E6E1',
+                buttonBlue: '#005A9C',
+                buttonRed: '#B00000',
+                indicatorAmber: '#FFB000',
+                indicatorGreen: '#00FF41',
+                text: '#1A1A1A',
+                wear: '#3A3530'
+            };
+
+            const KEY_LAYOUT = [
+                '1', '2', '3',
+                '4', '5', '6',
+                '7', '8', '9',
+                'C', '0', 'E'
+            ];
+
+            const keypad = document.getElementById('keypad');
+            const codeDisplay = document.getElementById('codeDisplay');
+            const messageDisplay = document.getElementById('messageDisplay');
+            const amberLamp = document.getElementById('amberLamp');
+            const greenLamp = document.getElementById('greenLamp');
+            const demoBtn = document.getElementById('demoBtn');
+
+            let code = '';
+            let isBusy = false;
+            let demoTimer = null;
+
+            function setStatus(message, busy) {
+                isBusy = busy;
+                messageDisplay.textContent = message;
+                amberLamp.classList.toggle('active', busy);
+                greenLamp.classList.toggle('active', !busy);
+            }
+
+            function flashPress(key) {
+                const btn = keypad.querySelector(`[data-key="${key}"]`);
+                if (!btn) {
+                    return;
+                }
+                btn.classList.add('pressed');
+                window.setTimeout(() => btn.classList.remove('pressed'), 120);
+            }
+
+            function renderCode() {
+                codeDisplay.textContent = code;
+            }
+
+            function submitCode() {
+                if (!code.length || isBusy) {
+                    return;
+                }
+
+                setStatus('Cycle in progress', true);
+                const submitted = code;
+
+                window.setTimeout(() => {
+                    setStatus('Access granted', false);
+                    messageDisplay.textContent = `Open ${submitted}`;
+                    code = '';
+                    renderCode();
+                }, 700);
+            }
+
+            function handleInput(key) {
+                if (!KEY_LAYOUT.includes(key) || isBusy) {
+                    return;
+                }
+
+                flashPress(key);
+                if (key === 'C') {
+                    code = '';
+                    setStatus('Code cleared', false);
+                } else if (key === 'E') {
+                    submitCode();
+                    return;
+                } else if (code.length < 6) {
+                    code += key;
+                    setStatus('Entering code', false);
+                }
+
+                renderCode();
+            }
+
+            function createButtons() {
+                KEY_LAYOUT.forEach((key) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'key';
+                    if (key === 'C') {
+                        button.classList.add('emergency');
+                    }
+                    if (key === 'E') {
+                        button.classList.add('control');
+                    }
+                    button.dataset.key = key;
+                    button.textContent = key;
+                    button.addEventListener('click', () => handleInput(key));
+                    keypad.appendChild(button);
+                });
+            }
+
+            function keyboardToKey(event) {
+                const k = event.key.toUpperCase();
+                if (/^[0-9]$/.test(k)) {
+                    return k;
+                }
+                if (k === 'C' || k === 'E') {
+                    return k;
+                }
+                if (event.key === 'Enter') {
+                    return 'E';
+                }
+                if (event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Escape') {
+                    return 'C';
+                }
+                return null;
+            }
+
+            function toggleDemo() {
+                if (demoTimer) {
+                    window.clearInterval(demoTimer);
+                    demoTimer = null;
+                    demoBtn.textContent = 'Demo Mode';
+                    setStatus('Ready', false);
+                    return;
+                }
+
+                demoBtn.textContent = 'Stop Demo';
+                demoTimer = window.setInterval(() => {
+                    if (isBusy) {
+                        return;
+                    }
+                    code = '';
+                    const seq = [
+                        String(Math.floor(Math.random() * 10)),
+                        String(Math.floor(Math.random() * 10)),
+                        String(Math.floor(Math.random() * 10)),
+                        String(Math.floor(Math.random() * 10))
+                    ];
+                    seq.forEach((digit, index) => {
+                        window.setTimeout(() => handleInput(digit), index * 110);
+                    });
+                    window.setTimeout(() => handleInput('E'), seq.length * 130);
+                }, 2200);
+            }
+
+            createButtons();
+            renderCode();
+
+            window.addEventListener('keydown', (event) => {
+                const key = keyboardToKey(event);
+                if (!key) {
+                    return;
+                }
+                event.preventDefault();
+                handleInput(key);
+            });
+
+            demoBtn.addEventListener('click', toggleDemo);
+            setStatus('Ready', false);
+            void COLORS;
+        })();
+    </script>
+</body>
+</html>
