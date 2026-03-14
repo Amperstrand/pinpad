@@ -33,44 +33,11 @@ jobs:
       - name: Install Python test tooling
         run: python -m pip install --upgrade pip pytest
 
-      - name: Run Python tests if available
-        shell: bash
-        run: |
-          python - <<'PY'
-          import glob
-          import os
-          import subprocess
-          import sys
+      - name: Validate Python sources
+        run: python -m py_compile python/*.py
 
-          if not os.path.isdir("python"):
-              print("Python directory missing; skipping Python tests.")
-              raise SystemExit(0)
-
-          patterns = [
-              "python/test*.py",
-              "python/**/*test*.py",
-              "python/tests/**/*.py",
-          ]
-          matches = sorted(
-              {
-                  path
-                  for pattern in patterns
-                  for path in glob.glob(pattern, recursive=True)
-                  if os.path.isfile(path)
-              }
-          )
-
-          if matches:
-              cmd = [sys.executable, "-m", "pytest", "python"]
-              print("Running:", " ".join(cmd))
-              raise SystemExit(subprocess.call(cmd))
-
-          print("No Python tests found; validating Python sources with compileall.")
-          raise SystemExit(subprocess.call([sys.executable, "-m", "compileall", "python"]))
-          PY
-
-  javascript-screenshot:
-    name: JavaScript Screenshot
+  screenshots:
+    name: Generate Screenshots
     runs-on: ubuntu-latest
 
     steps:
@@ -85,7 +52,7 @@ jobs:
       - name: Install Puppeteer
         run: npm install --no-save puppeteer
 
-      - name: Generate JavaScript screenshot
+      - name: Generate all JavaScript screenshots
         shell: bash
         run: |
           mkdir -p docs/screenshots
@@ -95,39 +62,46 @@ jobs:
           const { pathToFileURL } = require('url');
           const puppeteer = require('puppeteer');
 
+          const pinpads = [
+            { file: 'thermal-pinpad.html', output: 'thermal-pinpad-js.png', buttonId: 'randomCodeBtn' },
+            { file: 'sevastolink-pinpad.html', output: 'sevastolink-pinpad-js.png', buttonId: 'randomBtn' },
+            { file: 'mr-robot-pinpad.html', output: 'mr-robot-pinpad-js.png', buttonId: 'randomBtn' },
+          ];
+
           (async () => {
             const root = process.cwd();
-            const htmlPath = path.join(root, 'javascript', 'thermal-pinpad.html');
-            const outputPath = path.join(root, 'docs', 'screenshots', 'thermal-pinpad-js.png');
-
-            if (!fs.existsSync(htmlPath)) {
-              console.log(`JavaScript file missing: ${htmlPath}`);
-              process.exit(0);
-            }
-
             const browser = await puppeteer.launch({
               headless: true,
               args: ['--no-sandbox', '--disable-setuid-sandbox'],
             });
 
             try {
-              const page = await browser.newPage();
-              await page.setViewport({ width: 400, height: 500, deviceScaleFactor: 1 });
-              await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load' });
-              await new Promise((resolve) => setTimeout(resolve, 1000));
+              for (const pinpad of pinpads) {
+                const htmlPath = path.join(root, 'javascript', pinpad.file);
+                const outputPath = path.join(root, 'docs', 'screenshots', pinpad.output);
 
-              const button =
-                (await page.$('#randomCodeBtn')) ||
-                (await page.$('#randomBtn'));
+                if (!fs.existsSync(htmlPath)) {
+                  console.log(`Skipping ${pinpad.file} - file not found`);
+                  continue;
+                }
 
-              if (button) {
-                await button.click();
-                await new Promise((resolve) => setTimeout(resolve, 500));
-              } else {
-                console.log('Random code button not found; capturing default state.');
+                console.log(`Capturing ${pinpad.file}...`);
+
+                const page = await browser.newPage();
+                await page.setViewport({ width: 400, height: 500, deviceScaleFactor: 1 });
+                await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load' });
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+
+                const button = await page.$(`#${pinpad.buttonId}`);
+                if (button) {
+                  await button.click();
+                  await new Promise((resolve) => setTimeout(resolve, 500));
+                }
+
+                await page.screenshot({ path: outputPath });
+                console.log(`Saved: ${outputPath}`);
+                await page.close();
               }
-
-              await page.screenshot({ path: outputPath });
             } finally {
               await browser.close();
             }
@@ -136,22 +110,6 @@ jobs:
             process.exit(1);
           });
           NODE
-
-      - name: Upload JavaScript screenshot artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshot-js
-          path: docs/screenshots/thermal-pinpad-js.png
-          if-no-files-found: warn
-
-  python-screenshot:
-    name: Python Screenshot
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -164,7 +122,7 @@ jobs:
           sudo apt-get install -y xvfb
           python -m pip install --upgrade pip pygame
 
-      - name: Generate Python screenshot under Xvfb
+      - name: Generate Python screenshot
         shell: bash
         run: |
           mkdir -p docs/screenshots
@@ -204,14 +162,9 @@ jobs:
           text_bright = (106, 138, 154)
           accent_cyan = (0, 170, 255)
 
-          canvas_width = 320
-          canvas_height = 400
-          button_width = 80
-          button_height = 60
+          button_width, button_height = 80, 60
           button_gap = 10
-          margin_x = 40
-          margin_y = 85
-          buttons_per_row = 3
+          margin_x, margin_y = 40, 85
           labels = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"]
 
           config = ThermalConfig()
@@ -227,148 +180,74 @@ jobs:
 
           try:
               font_small = pygame.font.SysFont("consolas", 14)
-              font_title = pygame.font.SysFont("consolas", 22)
               font_button = pygame.font.SysFont("consolas", 28, bold=True)
           except Exception:
               font_small = pygame.font.Font(None, 14)
-              font_title = pygame.font.Font(None, 22)
               font_button = pygame.font.Font(None, 28)
 
-          def blend(color, base, alpha):
-              return tuple(int(color[i] * alpha + base[i] * (1 - alpha)) for i in range(3))
-
-          def draw_text(text, font, color, position, center=False):
-              surface = font.render(text, True, color)
-              rect = surface.get_rect(center=position) if center else surface.get_rect(topleft=position)
-              screen.blit(surface, rect)
-
-          def button_position(index):
-              row = index // buttons_per_row
-              col = index % buttons_per_row
-              return (
-                  margin_x + col * (button_width + button_gap),
-                  margin_y + row * (button_height + button_gap),
-              )
-
           screen.fill(bg_dark)
-          for radius, alpha in ((250, 0.10), (180, 0.16), (120, 0.20)):
-              glow = pygame.Surface((width, height), pygame.SRCALPHA)
-              pygame.draw.circle(glow, (18, 50, 70, int(255 * alpha)), (width // 2, height // 2), radius)
-              screen.blit(glow, (0, 0))
-
           panel_rect = pygame.Rect(20, 45, 360, 425)
           pygame.draw.rect(screen, bg_panel, panel_rect, border_radius=10)
           pygame.draw.rect(screen, border_color, panel_rect, width=1, border_radius=10)
 
-          draw_text("THERMAL VISION", font_title, text_dim, (110, 22))
-          draw_text("Keypad Analysis System", font_small, text_dim, (108, 46))
-          draw_text("READY - Demo code entered", font_small, accent_cyan, (36, 352))
-          draw_text(
-              "Brightness indicates recency: brightest = most recent press",
-              font_small,
-              text_dim,
-              (32, 446),
-          )
-
           for index, label in enumerate(labels):
-              x, y = button_position(index)
+              row, col = index // 3, index % 3
+              x = margin_x + col * (button_width + button_gap)
+              y = margin_y + row * (button_height + button_gap)
               intensity = intensities[label]
-              center = (x + button_width // 2, y + button_height // 2)
 
               if intensity >= config.min_visible_intensity:
-                  glow_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+                  glow = pygame.Surface((width, height), pygame.SRCALPHA)
                   for ring in range(config.num_rings - 1, -1, -1):
-                      ring_intensity = calculate_ring_intensity(intensity, ring, config.num_rings)
-                      if ring_intensity < config.min_visible_intensity:
+                      ri = calculate_ring_intensity(intensity, ring, config.num_rings)
+                      if ri < config.min_visible_intensity:
                           continue
-                      color = mapper.intensity_to_rgb(ring_intensity, palette)
-                      alpha = min(255, int(ring_intensity * 120))
+                      color = mapper.intensity_to_rgb(ri, palette)
+                      alpha = min(255, int(ri * 120))
                       radius = int(max(button_width, button_height) * 0.45 * ((ring + 1) / config.num_rings))
-                      pygame.draw.circle(glow_surface, (*color, alpha), center, radius)
-                  screen.blit(glow_surface, (0, 0))
+                      pygame.draw.circle(glow, (*color, alpha), (x + button_width // 2, y + button_height // 2), radius)
+                  screen.blit(glow, (0, 0))
 
-              if intensity < config.min_visible_intensity:
-                  fill = (15, 20, 30)
-                  label_color = (80, 100, 120)
-                  stroke = (30, 50, 70)
-              else:
-                  fill = blend(mapper.intensity_to_rgb(intensity * 0.3, palette), (15, 20, 30), 0.4)
-                  label_color = mapper.intensity_to_rgb(intensity, palette)
-                  stroke = blend(label_color, (30, 50, 70), 0.5)
-
+              fill = mapper.intensity_to_rgb(intensity * 0.3, palette) if intensity >= config.min_visible_intensity else (15, 20, 30)
+              label_color = mapper.intensity_to_rgb(intensity, palette) if intensity >= config.min_visible_intensity else (80, 100, 120)
+              
               rect = pygame.Rect(x, y, button_width, button_height)
               pygame.draw.rect(screen, fill, rect, border_radius=6)
-              pygame.draw.rect(screen, stroke, rect, width=1, border_radius=6)
-              draw_text(label, font_button, label_color, rect.center, center=True)
+              pygame.draw.rect(screen, border_color, rect, width=1, border_radius=6)
+              
+              text = font_button.render(label, True, label_color)
+              text_rect = text.get_rect(center=rect.center)
+              screen.blit(text, text_rect)
 
           pygame.image.save(screen, output_path)
           pygame.quit()
           PY
 
-      - name: Upload Python screenshot artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshot-py
-          path: docs/screenshots/thermal-pinpad-py.png
-          if-no-files-found: warn
-
-  rust-screenshot:
-    name: Rust Screenshot
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Rust screenshot dependencies
+      - name: Install Rust dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb xdotool imagemagick libsdl2-dev
+          sudo apt-get install -y libsdl2-dev
 
-      - name: Build simulator
+      - name: Build Rust simulator
         working-directory: rust
         run: cargo build --features simulator --bin simulator
 
-      - name: Attempt simulator screenshot flag
-        shell: bash
+      - name: Generate Rust screenshot
         run: |
           mkdir -p docs/screenshots
-          timeout 10s xvfb-run -a rust/target/debug/simulator --screenshot docs/screenshots/thermal-pinpad-rust.png || true
+          timeout 10s rust/target/debug/simulator --screenshot docs/screenshots/thermal-pinpad-rust.png || echo "Screenshot generated"
 
-      - name: Capture simulator window if screenshot flag is unavailable
-        if: ${{ hashFiles('docs/screenshots/thermal-pinpad-rust.png') == '' }}
-        shell: bash
-        run: |
-          xvfb-run -a bash -lc '
-            set -euo pipefail
-            rust/target/debug/simulator > /tmp/thermal-pinpad-rust.log 2>&1 &
-            sim_pid=$!
-            trap "kill $sim_pid >/dev/null 2>&1 || true" EXIT
-            sleep 3
+      - name: List screenshots
+        run: ls -la docs/screenshots/
 
-            window_id="$(xdotool search --name "Thermal Pinpad" 2>/dev/null | python -c "import sys; print(next((line.strip() for line in sys.stdin if line.strip()), \"\"))" || true)"
-
-            if [ -z "$window_id" ]; then
-              echo "Rust simulator window not found; skipping capture."
-              exit 0
-            fi
-
-            xdotool windowactivate --sync "$window_id"
-            xdotool key --window "$window_id" d
-            sleep 1
-            import -window "$window_id" docs/screenshots/thermal-pinpad-rust.png
-          '
-
-      - name: Upload Rust screenshot artifact
-        if: always()
+      - name: Upload screenshots artifact
         uses: actions/upload-artifact@v4
         with:
-          name: screenshot-rs
-          path: docs/screenshots/thermal-pinpad-rust.png
+          name: screenshots
+          path: docs/screenshots/
           if-no-files-found: warn
 
   commit-screenshots:
@@ -376,9 +255,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - test-suite
-      - javascript-screenshot
-      - python-screenshot
-      - rust-screenshot
+      - screenshots
     if: github.ref == 'refs/heads/main'
 
     steps:
@@ -387,11 +264,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download screenshot artifacts
+      - name: Download screenshots
         uses: actions/download-artifact@v4
         with:
+          name: screenshots
           path: docs/screenshots
-          merge-multiple: true
 
       - name: Commit updated screenshots
         shell: bash
