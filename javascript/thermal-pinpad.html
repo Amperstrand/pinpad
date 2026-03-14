@@ -259,9 +259,10 @@
                 // Peak is warm yellow-orange (not white) per SC1 Xbox original
                 splinter: {
                     // HSV stops for smooth interpolation
+                    // Cold-end uses purple (h=275) per SC Wiki: "dark, purplish color"
                     hsvStops: [
-                        { t: 0.0,  h: 230, s: 85, v: 12 },  // deep blue-black
-                        { t: 0.2,  h: 225, s: 90, v: 43 },  // cobalt
+                        { t: 0.0,  h: 275, s: 85, v: 12 },  // deep purple-black
+                        { t: 0.2,  h: 265, s: 90, v: 43 },  // purple-blue
                         { t: 0.4,  h: 195, s: 88, v: 67 },  // cyan
                         { t: 0.62, h: 150, s: 58, v: 75 },  // green
                         { t: 0.8,  h: 55,  s: 60, v: 86 },  // yellow

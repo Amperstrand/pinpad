@@ -47,9 +47,10 @@ impl ThermalPalette {
 }
 
 /// Splinter Cell palette - HSV-interpolated for perceptual smoothness.
-/// Peak is warm yellow-orange (SC authentic), not near-white.
+/// Cold-end uses purple (h=275) per SC Wiki: "dark, purplish color".
+/// Peak is warm yellow-orange (h=42), not near-white.
 static SPLINTER_CELL_STOPS: [ColorStop; 7] = [
-    ColorStop::new(0.00, 5, 8, 32),
+    ColorStop::new(0.00, 20, 5, 31),
     ColorStop::new(0.20, 12, 42, 110),
     ColorStop::new(0.40, 20, 120, 170),
     ColorStop::new(0.62, 82, 190, 132),

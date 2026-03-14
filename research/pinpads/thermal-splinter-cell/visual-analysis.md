@@ -38,8 +38,8 @@
   - Hue wraparound handled for blue→cyan→green→yellow→orange progression
 - **NEW**: Gamma curve (γ=1.3) applied for better perceptual separation between key intensities
 - Final HSV palette stops for Splinter Cell mode (h: 0-360, s: 0-100, v: 0-100):
-  - `t=0.00`: h=230, s=85, v=12 (deep blue-black #05081e)
-  - `t=0.20`: h=225, s=90, v=43 (cobalt #0c2a6b)
+  - `t=0.00`: h=275, s=85, v=12 (deep purple-black #14051f) — SC Wiki: "dark, purplish color"
+  - `t=0.20`: h=265, s=90, v=43 (purple-blue #0c2a6b)
   - `t=0.40`: h=195, s=88, v=67 (cyan #1478b0)
   - `t=0.62`: h=150, s=58, v=75 (green #52be87)
   - `t=0.80`: h=55,  s=60, v=86 (yellow #d8da58)
@@ -79,9 +79,12 @@
 - **Peak color correction**: Changed from near-white (#fffadc) to warm yellow-orange (#f0d020)
   - Source: Oracle consultation (session ses_31241dcb1ffeCz6VqXVTdYpHrA)
   - Reference: SC1 Xbox original peaks at yellow-orange, not white
+- **Cold-end purple correction**: Changed from blue (h=230) to purple (h=275)
+  - Source: SC Wiki explicitly states "dark, purplish color" for cold areas
+  - Reference: Librarian research (session ses_311aeaecbffeu6FjwnLWEHhKUU)
 - **HSV interpolation**: Replaced RGB linear interpolation with HSV-based
   - Perceptually smoother color transitions
-  - Proper hue wraparound handling (blue→cyan→green→yellow→orange)
+  - Proper hue wraparound handling (purple→blue→cyan→green→yellow→orange)
 - **Gamma curve**: Added γ=1.3 for better perceptual separation between intensities
 - **Precomputed LUT**: 256-entry lookup table for performance (especially Rust embedded)
 - **Chromatic aberration** (JS only): RGB channel offset on hot button edges

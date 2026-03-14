@@ -241,10 +241,9 @@ class ThermalColorMapper:
     # Gamma curve for better perceptual separation (γ=1.3)
     GAMMA = 1.3
     
-    # HSV stops for Splinter Cell palette (hue: 0-360, sat: 0-100, val: 0-100)
     _SPLINTER_HSV_STOPS = [
-        (0.0,  230, 85, 12),   # deep blue-black
-        (0.2,  225, 90, 43),   # cobalt
+        (0.0,  275, 85, 12),   # deep purple-black (SC Wiki: "dark, purplish color")
+        (0.2,  265, 90, 43),   # purple-blue
         (0.4,  195, 88, 67),   # cyan
         (0.62, 150, 58, 75),   # green
         (0.8,  55,  60, 86),   # yellow
