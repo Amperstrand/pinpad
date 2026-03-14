@@ -1,0 +1,409 @@
+name: Screenshots and Tests
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test-suite:
+    name: Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Rust tests
+        working-directory: rust
+        run: cargo test
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python test tooling
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Run Python tests if available
+        shell: bash
+        run: |
+          python - <<'PY'
+          import glob
+          import os
+          import subprocess
+          import sys
+
+          if not os.path.isdir("python"):
+              print("Python directory missing; skipping Python tests.")
+              raise SystemExit(0)
+
+          patterns = [
+              "python/test*.py",
+              "python/**/*test*.py",
+              "python/tests/**/*.py",
+          ]
+          matches = sorted(
+              {
+                  path
+                  for pattern in patterns
+                  for path in glob.glob(pattern, recursive=True)
+                  if os.path.isfile(path)
+              }
+          )
+
+          if matches:
+              cmd = [sys.executable, "-m", "pytest", "python"]
+              print("Running:", " ".join(cmd))
+              raise SystemExit(subprocess.call(cmd))
+
+          print("No Python tests found; validating Python sources with compileall.")
+          raise SystemExit(subprocess.call([sys.executable, "-m", "compileall", "python"]))
+          PY
+
+  javascript-screenshot:
+    name: JavaScript Screenshot
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Puppeteer
+        run: npm install --no-save puppeteer
+
+      - name: Generate JavaScript screenshot
+        shell: bash
+        run: |
+          mkdir -p docs/screenshots
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const { pathToFileURL } = require('url');
+          const puppeteer = require('puppeteer');
+
+          (async () => {
+            const root = process.cwd();
+            const htmlPath = path.join(root, 'javascript', 'thermal-pinpad.html');
+            const outputPath = path.join(root, 'docs', 'screenshots', 'thermal-pinpad-js.png');
+
+            if (!fs.existsSync(htmlPath)) {
+              console.log(`JavaScript file missing: ${htmlPath}`);
+              process.exit(0);
+            }
+
+            const browser = await puppeteer.launch({
+              headless: true,
+              args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            });
+
+            try {
+              const page = await browser.newPage();
+              await page.setViewport({ width: 400, height: 500, deviceScaleFactor: 1 });
+              await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load' });
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+
+              const button =
+                (await page.$('#randomCodeBtn')) ||
+                (await page.$('#randomBtn'));
+
+              if (button) {
+                await button.click();
+                await new Promise((resolve) => setTimeout(resolve, 500));
+              } else {
+                console.log('Random code button not found; capturing default state.');
+              }
+
+              await page.screenshot({ path: outputPath });
+            } finally {
+              await browser.close();
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Upload JavaScript screenshot artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-js
+          path: docs/screenshots/thermal-pinpad-js.png
+          if-no-files-found: warn
+
+  python-screenshot:
+    name: Python Screenshot
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python screenshot dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          python -m pip install --upgrade pip pygame
+
+      - name: Generate Python screenshot under Xvfb
+        shell: bash
+        run: |
+          mkdir -p docs/screenshots
+          xvfb-run -a python - <<'PY'
+          import os
+          import sys
+          import time
+
+          repo_root = os.getcwd()
+          python_root = os.path.join(repo_root, "python")
+          output_path = os.path.join(repo_root, "docs", "screenshots", "thermal-pinpad-py.png")
+
+          if not os.path.isfile(os.path.join(python_root, "thermal_pinpad.py")):
+              print("thermal_pinpad.py missing; skipping Python screenshot.")
+              raise SystemExit(0)
+
+          sys.path.insert(0, python_root)
+
+          import pygame
+          from thermal_pinpad import (
+              ThermalColorMapper,
+              ThermalConfig,
+              ThermalKeypad,
+              ThermalPalette,
+              calculate_ring_intensity,
+          )
+
+          pygame.init()
+          width, height = 400, 500
+          screen = pygame.display.set_mode((width, height))
+          pygame.display.set_caption("Thermal Pinpad")
+
+          bg_dark = (5, 5, 8)
+          bg_panel = (10, 10, 20)
+          border_color = (26, 42, 58)
+          text_dim = (58, 74, 90)
+          text_bright = (106, 138, 154)
+          accent_cyan = (0, 170, 255)
+
+          canvas_width = 320
+          canvas_height = 400
+          button_width = 80
+          button_height = 60
+          button_gap = 10
+          margin_x = 40
+          margin_y = 85
+          buttons_per_row = 3
+          labels = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"]
+
+          config = ThermalConfig()
+          keypad = ThermalKeypad(config)
+          mapper = ThermalColorMapper()
+          palette = ThermalPalette.SPLINTER_CELL
+
+          start_ms = time.time() * 1000
+          for index, digit in enumerate("4829"):
+              keypad.press_button_at(digit, start_ms + index * 200)
+          now_ms = start_ms + 900
+          intensities = keypad.get_all_intensities(now_ms)
+
+          try:
+              font_small = pygame.font.SysFont("consolas", 14)
+              font_title = pygame.font.SysFont("consolas", 22)
+              font_button = pygame.font.SysFont("consolas", 28, bold=True)
+          except Exception:
+              font_small = pygame.font.Font(None, 14)
+              font_title = pygame.font.Font(None, 22)
+              font_button = pygame.font.Font(None, 28)
+
+          def blend(color, base, alpha):
+              return tuple(int(color[i] * alpha + base[i] * (1 - alpha)) for i in range(3))
+
+          def draw_text(text, font, color, position, center=False):
+              surface = font.render(text, True, color)
+              rect = surface.get_rect(center=position) if center else surface.get_rect(topleft=position)
+              screen.blit(surface, rect)
+
+          def button_position(index):
+              row = index // buttons_per_row
+              col = index % buttons_per_row
+              return (
+                  margin_x + col * (button_width + button_gap),
+                  margin_y + row * (button_height + button_gap),
+              )
+
+          screen.fill(bg_dark)
+          for radius, alpha in ((250, 0.10), (180, 0.16), (120, 0.20)):
+              glow = pygame.Surface((width, height), pygame.SRCALPHA)
+              pygame.draw.circle(glow, (18, 50, 70, int(255 * alpha)), (width // 2, height // 2), radius)
+              screen.blit(glow, (0, 0))
+
+          panel_rect = pygame.Rect(20, 45, 360, 425)
+          pygame.draw.rect(screen, bg_panel, panel_rect, border_radius=10)
+          pygame.draw.rect(screen, border_color, panel_rect, width=1, border_radius=10)
+
+          draw_text("THERMAL VISION", font_title, text_dim, (110, 22))
+          draw_text("Keypad Analysis System", font_small, text_dim, (108, 46))
+          draw_text("READY - Demo code entered", font_small, accent_cyan, (36, 352))
+          draw_text(
+              "Brightness indicates recency: brightest = most recent press",
+              font_small,
+              text_dim,
+              (32, 446),
+          )
+
+          for index, label in enumerate(labels):
+              x, y = button_position(index)
+              intensity = intensities[label]
+              center = (x + button_width // 2, y + button_height // 2)
+
+              if intensity >= config.min_visible_intensity:
+                  glow_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+                  for ring in range(config.num_rings - 1, -1, -1):
+                      ring_intensity = calculate_ring_intensity(intensity, ring, config.num_rings)
+                      if ring_intensity < config.min_visible_intensity:
+                          continue
+                      color = mapper.intensity_to_rgb(ring_intensity, palette)
+                      alpha = min(255, int(ring_intensity * 120))
+                      radius = int(max(button_width, button_height) * 0.45 * ((ring + 1) / config.num_rings))
+                      pygame.draw.circle(glow_surface, (*color, alpha), center, radius)
+                  screen.blit(glow_surface, (0, 0))
+
+              if intensity < config.min_visible_intensity:
+                  fill = (15, 20, 30)
+                  label_color = (80, 100, 120)
+                  stroke = (30, 50, 70)
+              else:
+                  fill = blend(mapper.intensity_to_rgb(intensity * 0.3, palette), (15, 20, 30), 0.4)
+                  label_color = mapper.intensity_to_rgb(intensity, palette)
+                  stroke = blend(label_color, (30, 50, 70), 0.5)
+
+              rect = pygame.Rect(x, y, button_width, button_height)
+              pygame.draw.rect(screen, fill, rect, border_radius=6)
+              pygame.draw.rect(screen, stroke, rect, width=1, border_radius=6)
+              draw_text(label, font_button, label_color, rect.center, center=True)
+
+          pygame.image.save(screen, output_path)
+          pygame.quit()
+          PY
+
+      - name: Upload Python screenshot artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-py
+          path: docs/screenshots/thermal-pinpad-py.png
+          if-no-files-found: warn
+
+  rust-screenshot:
+    name: Rust Screenshot
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Rust screenshot dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xdotool imagemagick libsdl2-dev
+
+      - name: Build simulator
+        working-directory: rust
+        run: cargo build --features simulator --bin simulator
+
+      - name: Attempt simulator screenshot flag
+        shell: bash
+        run: |
+          mkdir -p docs/screenshots
+          timeout 10s xvfb-run -a rust/target/debug/simulator --screenshot docs/screenshots/thermal-pinpad-rust.png || true
+
+      - name: Capture simulator window if screenshot flag is unavailable
+        if: ${{ hashFiles('docs/screenshots/thermal-pinpad-rust.png') == '' }}
+        shell: bash
+        run: |
+          xvfb-run -a bash -lc '
+            set -euo pipefail
+            rust/target/debug/simulator > /tmp/thermal-pinpad-rust.log 2>&1 &
+            sim_pid=$!
+            trap "kill $sim_pid >/dev/null 2>&1 || true" EXIT
+            sleep 3
+
+            window_id="$(xdotool search --name "Thermal Pinpad" 2>/dev/null | python -c "import sys; print(next((line.strip() for line in sys.stdin if line.strip()), \"\"))" || true)"
+
+            if [ -z "$window_id" ]; then
+              echo "Rust simulator window not found; skipping capture."
+              exit 0
+            fi
+
+            xdotool windowactivate --sync "$window_id"
+            xdotool key --window "$window_id" d
+            sleep 1
+            import -window "$window_id" docs/screenshots/thermal-pinpad-rust.png
+          '
+
+      - name: Upload Rust screenshot artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-rs
+          path: docs/screenshots/thermal-pinpad-rust.png
+          if-no-files-found: warn
+
+  commit-screenshots:
+    name: Commit Screenshots
+    runs-on: ubuntu-latest
+    needs:
+      - test-suite
+      - javascript-screenshot
+      - python-screenshot
+      - rust-screenshot
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download screenshot artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: docs/screenshots
+          merge-multiple: true
+
+      - name: Commit updated screenshots
+        shell: bash
+        run: |
+          mkdir -p docs/screenshots
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots/
+          if git diff --cached --quiet; then
+            echo "No screenshot changes to commit."
+            exit 0
+          fi
+          git commit -m "[skip ci] Update generated screenshots"
+          git pull --rebase origin main
+          git push

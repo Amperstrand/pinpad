@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thermal Pinpad - Splinter Cell Style</title>
+    <style>
+        /* ===========================================
+           ROOT STYLES & DARK THERMAL THEME
+           =========================================== */
+        :root {
+            --bg-dark: #050508;
+            --bg-panel: #0a0a14;
+            --text-dim: #3a4a5a;
+            --text-bright: #6a8a9a;
+            --accent-cyan: #0af;
+            --border-color: #1a2a3a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: var(--bg-dark);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-bright);
+            padding: 20px;
+        }
+
+        /* ===========================================
+           HEADER
+           =========================================== */
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: 400;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+
+        .header .subtitle {
+            font-size: 11px;
+            color: var(--text-dim);
+            letter-spacing: 2px;
+        }
+
+        /* ===========================================
+           MAIN CONTAINER
+           =========================================== */
+        .container {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 
+                0 0 40px rgba(0, 40, 60, 0.3),
+                inset 0 0 20px rgba(0, 20, 40, 0.2);
+        }
+
+        /* ===========================================
+           CANVAS
+           =========================================== */
+        #thermalCanvas {
+            display: block;
+            border-radius: 4px;
+            cursor: crosshair;
+        }
+
+        /* ===========================================
+           STATUS BAR
+           =========================================== */
+        .status-bar {
+            margin-top: 15px;
+            padding: 10px 15px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+        }
+
+        .status-text {
+            font-size: 12px;
+            color: var(--accent-cyan);
+            letter-spacing: 1px;
+        }
+
+        /* ===========================================
+           CONTROLS
+           =========================================== */
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .btn {
+            background: rgba(10, 30, 50, 0.6);
+            border: 1px solid var(--border-color);
+            color: var(--text-bright);
+            padding: 8px 16px;
+            font-family: inherit;
+            font-size: 11px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background: rgba(20, 60, 80, 0.6);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn.active {
+            background: rgba(0, 100, 150, 0.4);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        .palette-select {
+            background: rgba(10, 30, 50, 0.6);
+            border: 1px solid var(--border-color);
+            color: var(--text-bright);
+            padding: 8px 12px;
+            font-family: inherit;
+            font-size: 11px;
+            letter-spacing: 1px;
+            cursor: pointer;
+            border-radius: 4px;
+            min-width: 140px;
+        }
+
+        .palette-select:hover {
+            border-color: var(--accent-cyan);
+        }
+
+        .palette-select:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+
+        /* ===========================================
+           INSTRUCTIONS
+           =========================================== */
+        .instructions {
+            margin-top: 20px;
+            font-size: 10px;
+            color: var(--text-dim);
+            text-align: center;
+            letter-spacing: 1px;
+            max-width: 320px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Thermal Vision</h1>
+        <div class="subtitle">Keypad Analysis System</div>
+    </div>
+
+    <div class="container">
+        <canvas id="thermalCanvas" width="320" height="400"></canvas>
+        
+        <div class="status-bar">
+            <div class="status-text" id="statusText">READY - Click buttons to simulate presses</div>
+        </div>
+
+        <div class="controls">
+            <button class="btn" id="demoBtn">Demo Mode</button>
+            <button class="btn" id="resetBtn">Reset</button>
+            <button class="btn" id="randomBtn">Random Code</button>
+            <select class="palette-select" id="paletteSelect">
+                <option value="splinter">Splinter Cell</option>
+                <option value="classic">Classic Thermal</option>
+                <option value="ironbow">Ironbow</option>
+                <option value="hotcold">Hot/Cold</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="instructions">
+        Brightness indicates recency: brightest = most recent press
+    </div>
+
+    <script>
+        // ===========================================
+        // THERMAL PINPAD - Splinter Cell Style
+        // Pure Vanilla JavaScript Implementation
+        // ===========================================
+
+        (function() {
+            'use strict';
+
+            // ===========================================
+            // CONFIGURATION CONSTANTS
+            // ===========================================
+            const CONFIG = {
+                // Canvas dimensions
+                CANVAS_WIDTH: 320,
+                CANVAS_HEIGHT: 400,
+
+                // Button layout
+                BUTTONS: [
+                    '1', '2', '3',
+                    '4', '5', '6',
+                    '7', '8', '9',
+                    '*', '0', '#'
+                ],
+                BUTTONS_PER_ROW: 3,
+                BUTTON_WIDTH: 80,
+                BUTTON_HEIGHT: 60,
+                BUTTON_GAP: 10,
+                MARGIN_X: 25,
+                MARGIN_Y: 30,
+
+                // Thermal effect settings
+                TOTAL_RINGS: 10,           // Number of concentric circles
+                DECAY_TIME_MS: 30000,      // 30 seconds full decay
+                MIN_INTENSITY: 0.02,       // Below this, skip rendering
+
+                // Animation
+                TARGET_FPS: 60
+            };
+
+            // ===========================================
+            // COLOR PALETTES
+            // ===========================================
+            const PALETTES = {
+                // Splinter Cell - dark blue to cyan to green to yellow to orange
+                splinter: [
+                    { t: 0.0,  color: [10, 10, 26] },      // Dark blue/black
+                    { t: 0.15, color: [26, 10, 46] },      // Purple/dark blue
+                    { t: 0.30, color: [26, 74, 94] },      // Cyan/teal
+                    { t: 0.50, color: [42, 138, 74] },     // Green
+                    { t: 0.70, color: [138, 170, 42] },    // Yellow-green
+                    { t: 0.85, color: [202, 202, 74] },    // Yellow
+                    { t: 1.0,  color: [234, 138, 42] }     // Orange
+                ],
+
+                // Classic Thermal - blue to cyan to yellow to orange to red
+                classic: [
+                    { t: 0.0,  color: [0, 0, 40] },
+                    { t: 0.2,  color: [0, 80, 160] },
+                    { t: 0.4,  color: [0, 200, 200] },
+                    { t: 0.6,  color: [200, 200, 0] },
+                    { t: 0.8,  color: [255, 128, 0] },
+                    { t: 1.0,  color: [255, 50, 50] }
+                ],
+
+                // Ironbow - professional thermal camera
+                ironbow: [
+                    { t: 0.0,  color: [0, 0, 0] },
+                    { t: 0.2,  color: [40, 0, 60] },
+                    { t: 0.4,  color: [150, 0, 50] },
+                    { t: 0.6,  color: [255, 80, 0] },
+                    { t: 0.8,  color: [255, 220, 80] },
+                    { t: 1.0,  color: [255, 255, 255] }
+                ],
+
+                // Hot/Cold - blue to white to red
+                hotcold: [
+                    { t: 0.0,  color: [0, 0, 100] },
+                    { t: 0.3,  color: [50, 50, 200] },
+                    { t: 0.5,  color: [255, 255, 255] },
+                    { t: 0.7,  color: [255, 150, 50] },
+                    { t: 1.0,  color: [255, 0, 0] }
+                ]
+            };
+
+            // ===========================================
+            // STATE MANAGEMENT
+            // ===========================================
+            const state = {
+                // Button heat data - tracks press timestamps
+                buttonHeat: new Map(),
+
+                // Current color palette
+                currentPalette: 'splinter',
+
+                // Demo mode state
+                demoMode: false,
+                demoInterval: null,
+
+                // Animation
+                lastFrameTime: 0,
+                animationId: null,
+
+                // UI references
+                canvas: null,
+                ctx: null,
+                statusText: null
+            };
+
+            // ===========================================
+            // INITIALIZATION
+            // ===========================================
+            function init() {
+                // Get DOM references
+                state.canvas = document.getElementById('thermalCanvas');
+                state.ctx = state.canvas.getContext('2d');
+                state.statusText = document.getElementById('statusText');
+
+                // Initialize button heat map
+                CONFIG.BUTTONS.forEach(label => {
+                    state.buttonHeat.set(label, null); // null = never pressed
+                });
+
+                // Setup event listeners
+                setupEventListeners();
+
+                // Start animation loop
+                startAnimation();
+
+                // Initial status
+                updateStatus('READY - Click buttons to simulate presses');
+            }
+
+            // ===========================================
+            // EVENT HANDLERS
+            // ===========================================
+            function setupEventListeners() {
+                // Canvas click handler
+                state.canvas.addEventListener('click', handleCanvasClick);
+
+                // Button controls
+                document.getElementById('demoBtn').addEventListener('click', toggleDemoMode);
+                document.getElementById('resetBtn').addEventListener('click', resetHeat);
+                document.getElementById('randomBtn').addEventListener('click', enterRandomCode);
+                document.getElementById('paletteSelect').addEventListener('change', handlePaletteChange);
+            }
+
+            /**
+             * Handle click on canvas to detect button press
+             */
+            function handleCanvasClick(event) {
+                const rect = state.canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+
+                // Find which button was clicked
+                const buttonLabel = getButtonAtPosition(x, y);
+                if (buttonLabel !== null) {
+                    pressButton(buttonLabel);
+                }
+            }
+
+            /**
+             * Determine which button is at the given canvas coordinates
+             */
+            function getButtonAtPosition(x, y) {
+                for (let i = 0; i < CONFIG.BUTTONS.length; i++) {
+                    const buttonPos = getButtonPosition(i);
+                    
+                    if (x >= buttonPos.x && 
+                        x <= buttonPos.x + CONFIG.BUTTON_WIDTH &&
+                        y >= buttonPos.y && 
+                        y <= buttonPos.y + CONFIG.BUTTON_HEIGHT) {
+                        return CONFIG.BUTTONS[i];
+                    }
+                }
+                return null;
+            }
+
+            /**
+             * Get the top-left position of a button by index
+             */
+            function getButtonPosition(index) {
+                const row = Math.floor(index / CONFIG.BUTTONS_PER_ROW);
+                const col = index % CONFIG.BUTTONS_PER_ROW;
+
+                return {
+                    x: CONFIG.MARGIN_X + col * (CONFIG.BUTTON_WIDTH + CONFIG.BUTTON_GAP),
+                    y: CONFIG.MARGIN_Y + row * (CONFIG.BUTTON_HEIGHT + CONFIG.BUTTON_GAP)
+                };
+            }
+
+            /**
+             * Simulate pressing a button - record timestamp
+             */
+            function pressButton(label) {
+                state.buttonHeat.set(label, Date.now());
+                updateStatus(`Button "${label}" pressed`);
+            }
+
+            /**
+             * Toggle demo mode on/off
+             */
+            function toggleDemoMode() {
+                state.demoMode = !state.demoMode;
+                const btn = document.getElementById('demoBtn');
+
+                if (state.demoMode) {
+                    btn.classList.add('active');
+                    btn.textContent = 'Stop Demo';
+                    updateStatus('DEMO MODE ACTIVE - Auto-entering codes...');
+                    startDemoSequence();
+                } else {
+                    btn.classList.remove('active');
+                    btn.textContent = 'Demo Mode';
+                    updateStatus('Demo mode stopped');
+                    stopDemoSequence();
+                }
+            }
+
+            /**
+             * Start the demo sequence - enter codes every 8 seconds
+             */
+            function startDemoSequence() {
+                // Enter a code immediately
+                enterRandomCode();
+
+                // Then every 8 seconds
+                state.demoInterval = setInterval(() => {
+                    if (state.demoMode) {
+                        enterRandomCode();
+                    }
+                }, 8000);
+            }
+
+            /**
+             * Stop the demo sequence
+             */
+            function stopDemoSequence() {
+                if (state.demoInterval) {
+                    clearInterval(state.demoInterval);
+                    state.demoInterval = null;
+                }
+            }
+
+            /**
+             * Reset all heat signatures
+             */
+            function resetHeat() {
+                CONFIG.BUTTONS.forEach(label => {
+                    state.buttonHeat.set(label, null);
+                });
+                updateStatus('All heat signatures cleared');
+            }
+
+            /**
+             * Enter a random 4-digit code
+             */
+            function enterRandomCode() {
+                const digits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+                const code = [];
+                
+                // Generate 4 random digits (can repeat)
+                for (let i = 0; i < 4; i++) {
+                    const randomIndex = Math.floor(Math.random() * digits.length);
+                    code.push(digits[randomIndex]);
+                }
+
+                // Press each digit with small delay between
+                code.forEach((digit, index) => {
+                    setTimeout(() => {
+                        pressButton(digit);
+                    }, index * 200); // 200ms between presses
+                });
+
+                updateStatus(`Code entered: ${code.join(' ')}`);
+            }
+
+            /**
+             * Handle palette selection change
+             */
+            function handlePaletteChange(event) {
+                state.currentPalette = event.target.value;
+                updateStatus(`Palette changed to: ${event.target.options[event.target.selectedIndex].text}`);
+            }
+
+            /**
+             * Update status text
+             */
+            function updateStatus(text) {
+                state.statusText.textContent = text;
+            }
+
+            // ===========================================
+            // THERMAL CALCULATIONS
+            // ===========================================
+
+            /**
+             * Calculate current intensity for a button based on press time
+             * Uses exponential decay: intensity = e^(-decay_progress * 3)
+             */
+            function calculateIntensity(pressTime) {
+                if (pressTime === null) return 0;
+
+                const elapsed = Date.now() - pressTime;
+                const decayProgress = elapsed / CONFIG.DECAY_TIME_MS;
+                
+                // Exponential decay formula
+                const intensity = Math.exp(-decayProgress * 3);
+
+                return Math.max(0, Math.min(1, intensity));
+            }
+
+            /**
+             * Calculate ring intensity with quadratic falloff
+             * ring_intensity = base_intensity * (1 - ring_index/total_rings)^2
+             */
+            function calculateRingIntensity(baseIntensity, ringIndex, totalRings) {
+                const falloff = Math.pow(1 - (ringIndex / totalRings), 2);
+                return baseIntensity * falloff;
+            }
+
+            /**
+             * Get color for a given intensity using current palette
+             */
+            function getColorForIntensity(intensity) {
+                const palette = PALETTES[state.currentPalette];
+
+                // Find the two color stops to interpolate between
+                let lower = palette[0];
+                let upper = palette[palette.length - 1];
+
+                for (let i = 0; i < palette.length - 1; i++) {
+                    if (intensity >= palette[i].t && intensity <= palette[i + 1].t) {
+                        lower = palette[i];
+                        upper = palette[i + 1];
+                        break;
+                    }
+                }
+
+                // Interpolate between the two colors
+                const range = upper.t - lower.t;
+                const factor = range === 0 ? 0 : (intensity - lower.t) / range;
+
+                return [
+                    Math.round(lower.color[0] + (upper.color[0] - lower.color[0]) * factor),
+                    Math.round(lower.color[1] + (upper.color[1] - lower.color[1]) * factor),
+                    Math.round(lower.color[2] + (upper.color[2] - lower.color[2]) * factor)
+                ];
+            }
+
+            // ===========================================
+            // RENDERING
+            // ===========================================
+
+            /**
+             * Main animation loop
+             */
+            function startAnimation() {
+                function loop(timestamp) {
+                    // Calculate delta time for consistent animation
+                    const deltaTime = timestamp - state.lastFrameTime;
+                    
+                    // Target ~60fps (16.67ms per frame)
+                    if (deltaTime >= 1000 / CONFIG.TARGET_FPS) {
+                        state.lastFrameTime = timestamp;
+                        render();
+                    }
+
+                    state.animationId = requestAnimationFrame(loop);
+                }
+
+                state.animationId = requestAnimationFrame(loop);
+            }
+
+            /**
+             * Main render function
+             */
+            function render() {
+                const ctx = state.ctx;
+                const canvas = state.canvas;
+
+                // Clear canvas with dark background
+                ctx.fillStyle = '#050508';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Draw subtle grid/noise background
+                drawBackground(ctx, canvas);
+
+                // Draw all buttons
+                CONFIG.BUTTONS.forEach((label, index) => {
+                    drawButton(ctx, index, label);
+                });
+            }
+
+            /**
+             * Draw subtle background texture
+             */
+            function drawBackground(ctx, canvas) {
+                // Dark gradient overlay
+                const gradient = ctx.createRadialGradient(
+                    canvas.width / 2, canvas.height / 2, 0,
+                    canvas.width / 2, canvas.height / 2, canvas.width
+                );
+                gradient.addColorStop(0, 'rgba(10, 15, 25, 0.3)');
+                gradient.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            /**
+             * Draw a single button with thermal effect
+             */
+            function drawButton(ctx, index, label) {
+                const pos = getButtonPosition(index);
+                const pressTime = state.buttonHeat.get(label);
+                const intensity = calculateIntensity(pressTime);
+
+                // Button center for glow effect
+                const centerX = pos.x + CONFIG.BUTTON_WIDTH / 2;
+                const centerY = pos.y + CONFIG.BUTTON_HEIGHT / 2;
+
+                // Draw thermal glow if intensity is above minimum
+                if (intensity >= CONFIG.MIN_INTENSITY) {
+                    drawThermalGlow(ctx, centerX, centerY, intensity);
+                }
+
+                // Draw button background
+                drawButtonBackground(ctx, pos, intensity);
+
+                // Draw button border
+                drawButtonBorder(ctx, pos, intensity);
+
+                // Draw button label
+                drawButtonLabel(ctx, pos, label, intensity);
+            }
+
+            /**
+             * Draw concentric circle thermal glow effect
+             */
+            function drawThermalGlow(ctx, centerX, centerY, baseIntensity) {
+                const maxRadius = Math.max(CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT) * 0.8;
+
+                for (let ring = CONFIG.TOTAL_RINGS - 1; ring >= 0; ring--) {
+                    const ringIntensity = calculateRingIntensity(baseIntensity, ring, CONFIG.TOTAL_RINGS);
+                    
+                    // Skip rings below minimum visibility
+                    if (ringIntensity < CONFIG.MIN_INTENSITY) continue;
+
+                    const radius = maxRadius * ((ring + 1) / CONFIG.TOTAL_RINGS);
+                    const color = getColorForIntensity(ringIntensity);
+                    const alpha = ringIntensity * 0.6;
+
+                    // Draw glow ring
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
+                    ctx.fill();
+                }
+            }
+
+            /**
+             * Draw button background
+             */
+            function drawButtonBackground(ctx, pos, intensity) {
+                // Cold button - dark background
+                let bgColor;
+                if (intensity < CONFIG.MIN_INTENSITY) {
+                    bgColor = 'rgba(15, 20, 30, 0.9)';
+                } else {
+                    // Warm button - tinted background
+                    const color = getColorForIntensity(intensity * 0.3);
+                    bgColor = `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0.4)`;
+                }
+
+                ctx.fillStyle = bgColor;
+                roundRect(ctx, pos.x, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 6);
+                ctx.fill();
+            }
+
+            /**
+             * Draw button border
+             */
+            function drawButtonBorder(ctx, pos, intensity) {
+                ctx.strokeStyle = intensity > CONFIG.MIN_INTENSITY 
+                    ? `rgba(60, 100, 120, ${0.3 + intensity * 0.4})`
+                    : 'rgba(30, 50, 70, 0.5)';
+                ctx.lineWidth = 1;
+                roundRect(ctx, pos.x, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 6);
+                ctx.stroke();
+            }
+
+            /**
+             * Draw button label
+             */
+            function drawButtonLabel(ctx, pos, label, intensity) {
+                ctx.font = '24px Consolas, Monaco, monospace';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                const centerX = pos.x + CONFIG.BUTTON_WIDTH / 2;
+                const centerY = pos.y + CONFIG.BUTTON_HEIGHT / 2;
+
+                // Label color based on intensity
+                if (intensity > CONFIG.MIN_INTENSITY) {
+                    const color = getColorForIntensity(intensity);
+                    ctx.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+                    
+                    // Add text glow for hot buttons
+                    ctx.shadowColor = `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0.8)`;
+                    ctx.shadowBlur = 10;
+                } else {
+                    ctx.fillStyle = 'rgba(80, 100, 120, 0.8)';
+                    ctx.shadowBlur = 0;
+                }
+
+                ctx.fillText(label, centerX, centerY);
+                
+                // Reset shadow
+                ctx.shadowBlur = 0;
+            }
+
+            /**
+             * Helper: Draw rounded rectangle path
+             */
+            function roundRect(ctx, x, y, width, height, radius) {
+                ctx.beginPath();
+                ctx.moveTo(x + radius, y);
+                ctx.lineTo(x + width - radius, y);
+                ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+                ctx.lineTo(x + width, y + height - radius);
+                ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+                ctx.lineTo(x + radius, y + height);
+                ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+                ctx.lineTo(x, y + radius);
+                ctx.quadraticCurveTo(x, y, x + radius, y);
+                ctx.closePath();
+            }
+
+            // ===========================================
+            // START APPLICATION
+            // ===========================================
+            document.addEventListener('DOMContentLoaded', init);
+
+        })();
+    </script>
+</body>
+</html>

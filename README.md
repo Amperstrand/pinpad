@@ -1,6 +1,16 @@
 # Pinpad
 
+[![CI](https://github.com/Amperstrand/pinpad/actions/workflows/screenshots.yml/badge.svg)](https://github.com/Amperstrand/pinpad/actions/workflows/screenshots.yml)
+[![Demo](https://img.shields.io/badge/demo-GitHub%20Pages-blue)](https://amperstrand.github.io/pinpad/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A collection of pinpad implementations from movies, video games, and popular culture, built through agentic AI development.
+
+## Quick Links
+
+- [Live Demo (GitHub Pages)](https://amperstrand.github.io/pinpad/)
+- [Screenshots Gallery](https://amperstrand.github.io/pinpad/#screenshots)
+- [CI Pipeline](https://github.com/Amperstrand/pinpad/actions/workflows/screenshots.yml)
 
 ## Current Project
 
@@ -16,7 +26,49 @@ See [MISSION.md](MISSION.md) for project overview andSee [research/pinpads/therm
 | Python | `python/thermal_pinpad.py` | ✅ Complete |
 | Rust | `rust/` | ✅ Complete |
 
-## Quick Start
+## Platform Instructions
+
+### JavaScript (Web Demo)
+**No installation required** - Simply open `javascript/thermal-pinpad.html` in any modern browser.
+
+```bash
+# Direct open
+open javascript/thermal-pinpad.html
+
+# Or serve locally
+cd javascript && python3 -m http.server 8080
+# Visit http://localhost:8080/thermal-pinpad.html
+```
+
+### Python (LVGL for Embedded Linux)
+**Target**: Raspberry Pi with touchscreen, or similar embedded Linux systems.
+
+```bash
+# Install dependencies
+pip install -r python/requirements.txt
+
+# Run LVGL demo (for embedded Linux with touchscreen)
+python python/lvgl_demo.py
+
+# Or run pygame demo (for desktop testing)
+python python/thermal_pinpad.py
+```
+
+### Rust (embedded-graphics)
+**Target**: STM32F469-DISCO or similar ARM Cortex boards with displays.
+
+```bash
+cd rust
+
+# PC simulator (requires SDL2)
+cargo run --features simulator
+
+# For actual hardware, use your preferred flash tool
+# The library is no_std compatible and uses fixed-point math
+cargo build --release --target thumbv7em-none-eabihf
+```
+
+## Quick Start (Legacy)
 
 ### JavaScript (Browser Demo)
 

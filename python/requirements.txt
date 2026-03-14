@@ -1,0 +1,5 @@
+# LVGL for embedded Linux GUI
+lvgl>=1.0.0
+
+# Optional: SDL2 driver for desktop development
+# lvgl>=1.0.0[SDL]

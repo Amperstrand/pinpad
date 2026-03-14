@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thermal Pinpad - Splinter Cell Thermal Vision Effect</title>
+    <meta name="description" content="A cross-platform thermal vision pinpad effect inspired by Splinter Cell. Available in JavaScript, Python/LVGL, and Rust/embedded-graphics.">
+    <style>
+        /* ===========================================
+           ROOT STYLES & DARK THERMAL THEME
+           =========================================== */
+        :root {
+            --bg-dark: #050f1e;
+            --bg-darker: #030810;
+            --bg-panel: #0a1a30;
+            --bg-panel-light: #0f2540;
+            --text-dim: #3a5a7a;
+            --text-bright: #6a9aba;
+            --text-cyan: #00d4ff;
+            --accent-orange: #ff9500;
+            --accent-orange-dim: #cc7700;
+            --border-color: #1a3a5a;
+            --border-glow: rgba(0, 212, 255, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(180deg, var(--bg-darker) 0%, var(--bg-dark) 50%, var(--bg-panel) 100%);
+            min-height: 100vh;
+            color: var(--text-bright);
+            line-height: 1.6;
+        }
+
+        /* ===========================================
+           HEADER
+           =========================================== */
+        .header {
+            text-align: center;
+            padding: 60px 20px 40px;
+            background: radial-gradient(ellipse at center top, rgba(0, 100, 150, 0.15) 0%, transparent 70%);
+        }
+
+        .header h1 {
+            font-size: clamp(2.5rem, 8vw, 4rem);
+            font-weight: 700;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: var(--text-cyan);
+            text-shadow: 
+                0 0 20px rgba(0, 212, 255, 0.5),
+                0 0 40px rgba(0, 212, 255, 0.3);
+            margin-bottom: 16px;
+        }
+
+        .header .subtitle {
+            font-size: clamp(1rem, 3vw, 1.25rem);
+            color: var(--text-dim);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        .header .tagline {
+            margin-top: 20px;
+            font-size: 1rem;
+            color: var(--accent-orange);
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* ===========================================
+           MAIN CONTENT
+           =========================================== */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        section {
+            margin-bottom: 60px;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-cyan);
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        /* ===========================================
+           SCREENSHOT COMPARISON
+           =========================================== */
+        .screenshots {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+        }
+
+        .screenshot-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .screenshot-card:hover {
+            border-color: var(--text-cyan);
+            box-shadow: 
+                0 4px 30px rgba(0, 0, 0, 0.4),
+                0 0 20px var(--border-glow);
+            transform: translateY(-4px);
+        }
+
+        .screenshot-image {
+            aspect-ratio: 4/5;
+            background: linear-gradient(135deg, var(--bg-darker) 0%, var(--bg-panel-light) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .screenshot-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .screenshot-image .placeholder {
+            color: var(--text-dim);
+            font-size: 0.875rem;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .screenshot-image .placeholder-icon {
+            font-size: 3rem;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+
+        .screenshot-label {
+            padding: 16px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .screenshot-label h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-bright);
+            margin-bottom: 4px;
+        }
+
+        .screenshot-label p {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        /* ===========================================
+           DEMO SECTION
+           =========================================== */
+        .demo-section {
+            text-align: center;
+            padding: 40px 20px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 
+                0 0 40px rgba(0, 40, 60, 0.3),
+                inset 0 0 20px rgba(0, 20, 40, 0.2);
+        }
+
+        .demo-section p {
+            margin-bottom: 24px;
+            color: var(--text-bright);
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .demo-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(135deg, var(--accent-orange-dim) 0%, var(--accent-orange) 100%);
+            color: #000;
+            padding: 16px 32px;
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 4px 20px rgba(255, 149, 0, 0.3);
+        }
+
+        .demo-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 
+                0 6px 30px rgba(255, 149, 0, 0.4),
+                0 0 20px rgba(255, 149, 0, 0.3);
+        }
+
+        .demo-btn:active {
+            transform: translateY(0);
+        }
+
+        /* ===========================================
+           PLATFORM DOCUMENTATION
+           =========================================== */
+        .platforms {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .platform-card {
+            background: rgba(10, 26, 48, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .platform-card:hover {
+            border-color: rgba(0, 212, 255, 0.5);
+            background: rgba(15, 37, 64, 0.6);
+        }
+
+        .platform-icon {
+            font-size: 2rem;
+            margin-bottom: 12px;
+        }
+
+        .platform-card h3 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--text-cyan);
+            margin-bottom: 8px;
+        }
+
+        .platform-card p {
+            color: var(--text-bright);
+            font-size: 0.9rem;
+        }
+
+        .platform-card code {
+            display: block;
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.8rem;
+            color: var(--accent-orange);
+            overflow-x: auto;
+        }
+
+        /* ===========================================
+           GITHUB LINK
+           =========================================== */
+        .github-section {
+            text-align: center;
+            padding: 40px 20px 60px;
+        }
+
+        .github-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: transparent;
+            border: 2px solid var(--text-cyan);
+            color: var(--text-cyan);
+            padding: 14px 28px;
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .github-btn:hover {
+            background: var(--text-cyan);
+            color: var(--bg-dark);
+            box-shadow: 0 0 20px var(--border-glow);
+        }
+
+        /* ===========================================
+           FOOTER
+           =========================================== */
+        .footer {
+            text-align: center;
+            padding: 30px 20px;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-dim);
+            font-size: 0.875rem;
+        }
+
+        .footer a {
+            color: var(--text-cyan);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* ===========================================
+           RESPONSIVE
+           =========================================== */
+        @media (max-width: 768px) {
+            .header {
+                padding: 40px 20px 30px;
+            }
+
+            .section-title {
+                font-size: 1.25rem;
+            }
+
+            .screenshots {
+                grid-template-columns: 1fr;
+                max-width: 320px;
+                margin: 0 auto;
+            }
+
+            .platforms {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Thermal Pinpad</h1>
+        <p class="subtitle">Splinter Cell Thermal Vision Effect</p>
+        <p class="tagline">Cross-platform thermal vision keypad implementation inspired by the classic stealth game mechanic</p>
+    </header>
+
+    <main class="container">
+        <!-- Screenshot Comparison Section -->
+        <section>
+            <h2 class="section-title">Platform Screenshots</h2>
+            <div class="screenshots">
+                <div class="screenshot-card">
+                    <div class="screenshot-image">
+                        <img src="screenshots/thermal-pinpad-js.png" alt="JavaScript/Web Thermal Pinpad" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="placeholder" style="display: none; flex-direction: column;">
+                            <div class="placeholder-icon">🌐</div>
+                            <span>Screenshot coming soon</span>
+                        </div>
+                    </div>
+                    <div class="screenshot-label">
+                        <h3>JavaScript (Web)</h3>
+                        <p>Canvas-based rendering</p>
+                    </div>
+                </div>
+
+                <div class="screenshot-card">
+                    <div class="screenshot-image">
+                        <img src="screenshots/thermal-pinpad-py.png" alt="Python/LVGL Thermal Pinpad" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="placeholder" style="display: none; flex-direction: column;">
+                            <div class="placeholder-icon">🐍</div>
+                            <span>Screenshot coming soon</span>
+                        </div>
+                    </div>
+                    <div class="screenshot-label">
+                        <h3>Python (LVGL)</h3>
+                        <p>Embedded Linux GUI</p>
+                    </div>
+                </div>
+
+                <div class="screenshot-card">
+                    <div class="screenshot-image">
+                        <img src="screenshots/thermal-pinpad-rust.png" alt="Rust/embedded-graphics Thermal Pinpad" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="placeholder" style="display: none; flex-direction: column;">
+                            <div class="placeholder-icon">🦀</div>
+                            <span>Screenshot coming soon</span>
+                        </div>
+                    </div>
+                    <div class="screenshot-label">
+                        <h3>Rust (embedded-graphics)</h3>
+                        <p>Bare-metal ARM</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Demo Section -->
+        <section class="demo-section">
+            <h2 class="section-title" style="border: none; text-align: center;">Interactive Demo</h2>
+            <p>Experience the thermal vision effect right in your browser. Click the buttons to see heat signatures appear and fade over time.</p>
+            <a href="demos/thermal-pinpad.html" class="demo-btn">
+                <span>▶</span>
+                Try It Now
+            </a>
+        </section>
+
+        <!-- Platform Documentation Section -->
+        <section>
+            <h2 class="section-title">Platform Documentation</h2>
+            <div class="platforms">
+                <div class="platform-card">
+                    <div class="platform-icon">🌐</div>
+                    <h3>JavaScript (Web)</h3>
+                    <p>Open in any browser - no dependencies required. Pure HTML5 Canvas implementation with smooth 60fps animation.</p>
+                    <code>Open thermal-pinpad.html in browser</code>
+                </div>
+
+                <div class="platform-card">
+                    <div class="platform-icon">🐍</div>
+                    <h3>Python (LVGL)</h3>
+                    <p>For embedded Linux systems like Raspberry Pi. Uses LVGL for efficient hardware-accelerated rendering on touch displays.</p>
+                    <code>python3 thermal_pinpad.py</code>
+                </div>
+
+                <div class="platform-card">
+                    <div class="platform-icon">🦀</div>
+                    <h3>Rust (embedded-graphics)</h3>
+                    <p>For bare-metal ARM systems like STM32F469. No operating system required - runs directly on microcontroller hardware.</p>
+                    <code>cargo run --release</code>
+                </div>
+            </div>
+        </section>
+
+        <!-- GitHub Link -->
+        <section class="github-section">
+            <a href="https://github.com/Amperstrand/pinpad" class="github-btn" target="_blank" rel="noopener noreferrer">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                </svg>
+                View on GitHub
+            </a>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>Inspired by <a href="https://splintercell.fandom.com/wiki/Thermal_vision" target="_blank" rel="noopener noreferrer">Splinter Cell's Thermal Vision</a> • Built with ❤️ for embedded developers</p>
+    </footer>
+</body>
+</html>
