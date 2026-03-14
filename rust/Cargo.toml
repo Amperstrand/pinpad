@@ -1,0 +1,21 @@
+[package]
+name = "thermal-pinpad"
+version = "0.1.0"
+edition = "2021"
+description = "Splinter Cell thermal vision keypad effect for embedded-graphics"
+license = "MIT"
+keywords = ["embedded", "graphics", "thermal", "no_std", "embedded-graphics"]
+categories = ["embedded", "graphics", "no-std"]
+
+[dependencies]
+embedded-graphics = "0.8"
+embedded-graphics-simulator = { version = "0.5", optional = true }
+rand = { version = "0.8", optional = true }
+
+[features]
+default = []
+simulator = ["embedded-graphics-simulator", "rand"]
+
+[[bin]]
+name = "simulator"
+required-features = ["simulator"]
