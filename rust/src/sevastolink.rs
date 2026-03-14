@@ -66,6 +66,18 @@ pub struct SevastolinkConfig {
     /// Noise intensity (0.0-1.0).
     /// Default: 0.08
     pub noise_intensity: f32,
+
+    /// Film grain update interval in milliseconds (~10fps).
+    /// Default: 100
+    pub grain_update_ms: u16,
+
+    /// Chromatic aberration offset in pixels.
+    /// Default: 2
+    pub chroma_offset: u8,
+
+    /// Chromatic aberration threshold (flash intensity > this triggers effect).
+    /// Default: 0.4
+    pub chroma_threshold: f32,
 }
 
 impl Default for SevastolinkConfig {
@@ -88,6 +100,9 @@ impl SevastolinkConfig {
             verify_delay_ms: 800,
             scanline_intensity: 0.25,
             noise_intensity: 0.08,
+            grain_update_ms: 100,
+            chroma_offset: 2,
+            chroma_threshold: 0.4,
         }
     }
 
@@ -434,6 +449,19 @@ pub fn cursor_blink(now_ms: u64, last_toggle_ms: u64, blink_interval_ms: u16) ->
         // No toggle yet, return current state (assume started visible)
         (false, last_toggle_ms)
     }
+}
+
+/// Check if chromatic aberration should be applied based on flash intensity.
+///
+/// # Arguments
+/// * `flash_intensity` - Current flash intensity (0.0-1.0)
+/// * `threshold` - Threshold for triggering chromatic aberration
+///
+/// # Returns
+/// `true` if chromatic aberration should be applied
+#[inline]
+pub fn should_apply_chromatic(flash_intensity: f32, threshold: f32) -> bool {
+    flash_intensity > threshold
 }
 
 // =============================================================================

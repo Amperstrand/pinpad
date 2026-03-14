@@ -6,8 +6,7 @@ Core classes are platform-agnostic.
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple, List
-import math
+from typing import Dict, Optional
 import time
 import random
 
@@ -95,8 +94,10 @@ class MrRobotKeypad:
 # =============================================================================
 
 if __name__ == "__main__":
-    import pygame
+    import importlib
     import sys
+
+    pygame = importlib.import_module("pygame")
     
     pygame.init()
     
@@ -117,7 +118,7 @@ if __name__ == "__main__":
     clock = pygame.time.Clock()
     
     # Terminal output simulation
-    terminal_lines = [
+    terminal_lines: list[tuple[str, tuple[int, int, int]]] = [
         ("[*] FBI Femtocell Interception System v2.5", DIM_GREEN),
         ("[*] Target: E Corp HQ, Floor 23", DIM_GREEN),
         ("[+] System ready. Enter PIN to authenticate.", SUCCESS_GREEN)
@@ -129,8 +130,11 @@ if __name__ == "__main__":
     BTN_W = 70
     BTN_H = 55
     GAP = 12
+    CHROMATIC_OFFSET = 2
+    GRAIN_UPDATE_INTERVAL_MS = 100
+    NOISE_POINTS = 700
     
-    def get_btn_rect(index: int) -> pygame.Rect:
+    def get_btn_rect(index: int):
         row = index // 3
         col = index % 3
         x = MARGIN_X + col * (BTN_W + GAP)
@@ -162,9 +166,42 @@ if __name__ == "__main__":
             pygame.draw.line(scanline_surf, SCANLINE_COLOR, (0, y), (WIDTH, y), 2)
         screen.blit(scanline_surf, (0, 0))
 
+    def build_grain_surface():
+        grain = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        for _ in range(NOISE_POINTS):
+            x = random.randint(0, WIDTH - 1)
+            y = random.randint(0, HEIGHT - 1)
+            g = random.randint(28, 58)
+            color = (0, min(255, g + 45), g // 3, 18)
+            grain.set_at((x, y), color)
+        return grain
+
+    def draw_button_border(rect, is_pressed: bool, is_hovered: bool):
+        if not (is_pressed or is_hovered):
+            pygame.draw.rect(screen, DIM_GREEN, rect, 1, border_radius=3)
+            return
+
+        alpha = 90 if is_pressed else 64
+        overlay = pygame.Surface((rect.width + CHROMATIC_OFFSET * 2, rect.height), pygame.SRCALPHA)
+
+        left_rect = pygame.Rect(0, 0, rect.width, rect.height)
+        center_rect = pygame.Rect(CHROMATIC_OFFSET, 0, rect.width, rect.height)
+        right_rect = pygame.Rect(CHROMATIC_OFFSET * 2, 0, rect.width, rect.height)
+
+        pygame.draw.rect(overlay, (255, 60, 70, int(alpha * 0.45)), left_rect, 1, border_radius=3)
+        pygame.draw.rect(overlay, (0, 255, 65, alpha), center_rect, 1, border_radius=3)
+        pygame.draw.rect(overlay, (120, 210, 255, int(alpha * 0.5)), right_rect, 1, border_radius=3)
+
+        screen.blit(overlay, (rect.x - CHROMATIC_OFFSET, rect.y))
+
+    cached_grain = build_grain_surface()
+    last_grain_update = pygame.time.get_ticks()
+
     running = True
     while running:
         current_time = pygame.time.get_ticks()
+        hover_pos = pygame.mouse.get_pos()
+        hovered_label = None
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -226,8 +263,11 @@ if __name__ == "__main__":
         for i, label in enumerate(keypad.BUTTONS):
             rect = get_btn_rect(i)
             btn = keypad.get_button(label)
+            if rect.collidepoint(hover_pos):
+                hovered_label = label
             
             is_pressed = btn is not None and btn.pressed_at is not None and (current_time - btn.pressed_at < 150)
+            is_hovered = hovered_label == label
             
             # Draw phosphor glow for pressed buttons
             if is_pressed:
@@ -235,11 +275,15 @@ if __name__ == "__main__":
                 pygame.draw.ellipse(glow_surf, (0, 255, 65, 40), glow_surf.get_rect())
                 screen.blit(glow_surf, (rect.x - 30, rect.y - 30))
             
-            bg_color = (0, 40, 20) if is_pressed else (0, 20, 0)
-            border_color = PHOSPHOR_GREEN if is_pressed else DIM_GREEN
+            if is_pressed:
+                bg_color = (0, 40, 20)
+            elif is_hovered:
+                bg_color = (0, 32, 16)
+            else:
+                bg_color = (0, 20, 0)
             
             pygame.draw.rect(screen, bg_color, rect, border_radius=3)
-            pygame.draw.rect(screen, border_color, rect, 1, border_radius=3)
+            draw_button_border(rect, is_pressed, is_hovered)
             
             disp_label = 'CLR' if label == 'C' else 'ENT' if label == 'E' else label
             text_color = PHOSPHOR_GREEN
@@ -247,6 +291,12 @@ if __name__ == "__main__":
             text_surf = font_large.render(disp_label, True, text_color)
             text_rect = text_surf.get_rect(center=rect.center)
             screen.blit(text_surf, text_rect)
+
+        if current_time - last_grain_update >= GRAIN_UPDATE_INTERVAL_MS:
+            cached_grain = build_grain_surface()
+            last_grain_update = current_time
+
+        screen.blit(cached_grain, (0, 0))
             
         draw_scanlines()
         

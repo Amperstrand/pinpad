@@ -13,6 +13,8 @@ pub struct TerminalConfig {
     pub cursor_blink_ms: u32,
     pub typing_delay_ms: u32,
     pub typing_variance_ms: u32,
+    pub grain_update_interval_ms: u32,
+    pub chromatic_offset_px: u8,
 }
 
 impl Default for TerminalConfig {
@@ -22,6 +24,8 @@ impl Default for TerminalConfig {
             cursor_blink_ms: 530,
             typing_delay_ms: 30,
             typing_variance_ms: 15,
+            grain_update_interval_ms: 100,
+            chromatic_offset_px: 2,
         }
     }
 }
@@ -33,7 +37,61 @@ impl TerminalConfig {
             cursor_blink_ms: 530,
             typing_delay_ms: 30,
             typing_variance_ms: 15,
+            grain_update_interval_ms: 100,
+            chromatic_offset_px: 2,
         }
+    }
+
+    #[inline]
+    pub const fn grain_update_interval_ms(mut self, interval_ms: u32) -> Self {
+        self.grain_update_interval_ms = interval_ms;
+        self
+    }
+
+    #[inline]
+    pub const fn chromatic_offset_px(mut self, offset_px: u8) -> Self {
+        self.chromatic_offset_px = offset_px;
+        self
+    }
+}
+
+/// Minimal frame cache helper for effects like film grain.
+#[derive(Clone, Copy, Debug)]
+pub struct GrainCacheState {
+    last_update_ms: Option<u64>,
+}
+
+impl GrainCacheState {
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            last_update_ms: None,
+        }
+    }
+
+    #[inline]
+    pub const fn last_update_ms(&self) -> Option<u64> {
+        self.last_update_ms
+    }
+
+    #[inline]
+    pub fn should_refresh(&self, now_ms: u64, interval_ms: u32) -> bool {
+        match self.last_update_ms {
+            Some(last) => now_ms.saturating_sub(last) >= interval_ms as u64,
+            None => true,
+        }
+    }
+
+    #[inline]
+    pub fn mark_updated(&mut self, now_ms: u64) {
+        self.last_update_ms = Some(now_ms);
+    }
+}
+
+impl Default for GrainCacheState {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -227,6 +285,10 @@ pub mod colors {
     pub const SUCCESS_GREEN: (u8, u8, u8) = (0, 255, 0);
     /// Warning amber: #ffaa00 / (255, 170, 0)
     pub const WARNING_AMBER: (u8, u8, u8) = (255, 170, 0);
+    /// Chromatic red edge channel used for active/hovered buttons.
+    pub const CHROMATIC_RED: (u8, u8, u8) = (255, 60, 70);
+    /// Chromatic blue edge channel used for active/hovered buttons.
+    pub const CHROMATIC_BLUE: (u8, u8, u8) = (120, 210, 255);
 }
 
 #[cfg(test)]
@@ -314,6 +376,28 @@ mod tests {
         assert_eq!(config.cursor_blink_ms, 530);
         assert_eq!(config.typing_delay_ms, 30);
         assert_eq!(config.typing_variance_ms, 15);
+        assert_eq!(config.grain_update_interval_ms, 100);
+        assert_eq!(config.chromatic_offset_px, 2);
+    }
+
+    #[test]
+    fn test_config_builders_for_visual_effects() {
+        let config = TerminalConfig::new()
+            .grain_update_interval_ms(120)
+            .chromatic_offset_px(3);
+
+        assert_eq!(config.grain_update_interval_ms, 120);
+        assert_eq!(config.chromatic_offset_px, 3);
+    }
+
+    #[test]
+    fn test_grain_cache_refresh_window() {
+        let mut cache = GrainCacheState::new();
+        assert!(cache.should_refresh(1000, 100));
+
+        cache.mark_updated(1000);
+        assert!(!cache.should_refresh(1050, 100));
+        assert!(cache.should_refresh(1100, 100));
     }
 
     #[test]

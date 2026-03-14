@@ -315,6 +315,11 @@
                 lastFrameTime: 0,
                 animationId: null,
 
+                // Cached film grain (regenerated at ~10fps)
+                cachedGrain: null,
+                lastGrainUpdate: 0,
+                GRAIN_UPDATE_INTERVAL: 100,  // 100ms = 10fps
+
                 // UI references
                 canvas: null,
                 ctx: null,
@@ -631,20 +636,27 @@
             }
 
             function drawNoise(ctx, canvas) {
-                const imageData = ctx.createImageData(canvas.width, canvas.height);
-                const data = imageData.data;
+                const now = Date.now();
 
-                for (let i = 0; i < data.length; i += 4) {
-                    if (Math.random() < CONFIG.NOISE_INTENSITY) {
-                        const noise = Math.random() * 20;
-                        data[i] = noise;     // R
-                        data[i + 1] = noise * 2;  // G (green tint)
-                        data[i + 2] = noise;     // B
-                        data[i + 3] = 30;        // A
+                // Regenerate grain at ~10fps (every 100ms)
+                if (!state.cachedGrain || now - state.lastGrainUpdate >= state.GRAIN_UPDATE_INTERVAL) {
+                    state.cachedGrain = ctx.createImageData(canvas.width, canvas.height);
+                    const data = state.cachedGrain.data;
+
+                    for (let i = 0; i < data.length; i += 4) {
+                        if (Math.random() < CONFIG.NOISE_INTENSITY) {
+                            const noise = Math.random() * 20;
+                            data[i] = noise;     // R
+                            data[i + 1] = noise * 2;  // G (green tint)
+                            data[i + 2] = noise;     // B
+                            data[i + 3] = 30;        // A
+                        }
                     }
+
+                    state.lastGrainUpdate = now;
                 }
 
-                ctx.putImageData(imageData, 0, 0);
+                ctx.putImageData(state.cachedGrain, 0, 0);
             }
 
             function drawPhosphorGlow(ctx, canvas) {
@@ -732,13 +744,39 @@
                 const pos = getButtonPosition(index);
                 const isFlashing = state.flashingButton === label;
                 const now = Date.now();
-                
+
                 // Calculate flash intensity
                 let flashIntensity = 0;
                 if (isFlashing) {
                     const elapsed = now - state.flashStartTime;
                     flashIntensity = 1 - (elapsed / CONFIG.KEYPRESS_FLASH);
                     flashIntensity = Math.max(0, flashIntensity);
+                }
+
+                // Chromatic aberration on hot edges (when flashing intensely)
+                const applyChromatic = isFlashing && flashIntensity > 0.4;
+                const chromaOffset = 2;  // RGB channel offset in pixels
+
+                if (applyChromatic) {
+                    // Draw red channel offset (left)
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'lighter';
+                    ctx.globalAlpha = 0.5 * flashIntensity;
+                    ctx.strokeStyle = '#ff0000';
+                    ctx.lineWidth = 2;
+                    roundRect(ctx, pos.x - chromaOffset, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
+                    ctx.stroke();
+                    ctx.restore();
+
+                    // Draw blue channel offset (right)
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'lighter';
+                    ctx.globalAlpha = 0.5 * flashIntensity;
+                    ctx.strokeStyle = '#0000ff';
+                    ctx.lineWidth = 2;
+                    roundRect(ctx, pos.x + chromaOffset, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
+                    ctx.stroke();
+                    ctx.restore();
                 }
 
                 // Button background
@@ -751,7 +789,7 @@
                 } else {
                     ctx.fillStyle = COLORS.XENOMORPH_SKIN;
                 }
-                
+
                 roundRect(ctx, pos.x, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
                 ctx.fill();
 
@@ -774,7 +812,7 @@
                 ctx.font = '20px "Courier New", monospace';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                
+
                 const centerX = pos.x + CONFIG.BUTTON_WIDTH / 2;
                 const centerY = pos.y + CONFIG.BUTTON_HEIGHT / 2;
 
@@ -783,13 +821,23 @@
                 if (label === 'C') displayLabel = 'CLR';
                 else if (label === 'E') displayLabel = 'ENT';
 
+                // Chromatic aberration on label when flashing hard
+                if (applyChromatic) {
+                    ctx.globalAlpha = 0.6;
+                    ctx.fillStyle = '#ff0044';  // Red offset
+                    ctx.fillText(displayLabel, centerX - chromaOffset, centerY);
+                    ctx.fillStyle = '#0044ff';  // Blue offset
+                    ctx.fillText(displayLabel, centerX + chromaOffset, centerY);
+                    ctx.globalAlpha = 1;
+                }
+
                 ctx.fillStyle = isFlashing ? COLORS.XENOMORPH_SKIN : COLORS.SEGSON_GREEN;
-                
+
                 if (isFlashing) {
                     ctx.shadowColor = COLORS.HYPERSLEEP_WHITE;
                     ctx.shadowBlur = 5;
                 }
-                
+
                 ctx.fillText(displayLabel, centerX, centerY);
                 ctx.shadowBlur = 0;
             }

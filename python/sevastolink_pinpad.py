@@ -265,7 +265,8 @@ if __name__ == "__main__":
     SCANLINE_SPACING = 4
     NOISE_INTENSITY = 0.08
     FLICKER_CHANCE = 0.003
-    
+    GRAIN_UPDATE_INTERVAL_MS = 100  # ~10fps for film grain
+
     class SevastolinkDemo:
         """Tkinter demo application for the Sevastolink terminal."""
         
@@ -290,7 +291,11 @@ if __name__ == "__main__":
             self.demo_mode = False
             self.demo_job = None
             self.verify_job = None
-            
+
+            # Cached grain for performance (regenerated at ~10fps)
+            self.cached_grain_points = []
+            self.last_grain_update = 0
+
             # Build UI
             self._build_ui()
             
@@ -609,15 +614,23 @@ if __name__ == "__main__":
                 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT,
                 fill='#000000', outline=''
             )
-            
-            # Add subtle noise
-            for _ in range(int(CANVAS_WIDTH * CANVAS_HEIGHT * NOISE_INTENSITY * 0.01)):
-                x = random.randint(0, CANVAS_WIDTH)
-                y = random.randint(0, CANVAS_HEIGHT)
-                noise = random.randint(5, 15)
-                color = f'#{noise:02x}{noise*2:02x}{noise:02x}'
+
+            # Regenerate grain at ~10fps
+            now_ms = time.time() * 1000
+            if not self.cached_grain_points or now_ms - self.last_grain_update >= GRAIN_UPDATE_INTERVAL_MS:
+                self.cached_grain_points = []
+                for _ in range(int(CANVAS_WIDTH * CANVAS_HEIGHT * NOISE_INTENSITY * 0.01)):
+                    x = random.randint(0, CANVAS_WIDTH)
+                    y = random.randint(0, CANVAS_HEIGHT)
+                    noise = random.randint(5, 15)
+                    color = f'#{noise:02x}{noise*2:02x}{noise:02x}'
+                    self.cached_grain_points.append((x, y, color))
+                self.last_grain_update = now_ms
+
+            # Draw cached grain
+            for x, y, color in self.cached_grain_points:
                 self.canvas.create_rectangle(x, y, x+1, y+1, fill=color, outline='')
-            
+
             # Screen flicker overlay
             if self.screen_flicker:
                 self.canvas.create_rectangle(
@@ -708,7 +721,23 @@ if __name__ == "__main__":
             """Draw a single button."""
             x, y = self._get_button_position(index)
             is_flashing = flashing_btn == label
-            
+
+            # Chromatic aberration on hot edges (when flashing intensely)
+            apply_chromatic = is_flashing and flash_intensity > 0.4
+            chroma_offset = 2
+
+            if apply_chromatic:
+                # Red channel offset (left)
+                self._draw_rounded_rect(
+                    x - chroma_offset, y, BUTTON_WIDTH, BUTTON_HEIGHT, 3,
+                    fill='', outline='#ff0000'
+                )
+                # Blue channel offset (right)
+                self._draw_rounded_rect(
+                    x + chroma_offset, y, BUTTON_WIDTH, BUTTON_HEIGHT, 3,
+                    fill='', outline='#0000ff'
+                )
+
             # Determine colors
             if is_flashing and flash_intensity > 0:
                 bg_color = lerp_color(
@@ -722,24 +751,39 @@ if __name__ == "__main__":
                 bg_color = SevastolinkColors.XENOMORPH_SKIN
                 border_color = SevastolinkColors.TERMINAL_GREEN
                 text_color = SevastolinkColors.SEEGSON_GREEN
-            
+
             # Draw button background
             self._draw_rounded_rect(
                 x, y, BUTTON_WIDTH, BUTTON_HEIGHT, 3,
                 fill=SevastolinkColors.to_hex(bg_color),
                 outline=SevastolinkColors.to_hex(border_color)
             )
-            
+
             # Button label
             display_label = label
             if label == 'C':
                 display_label = 'CLR'
             elif label == 'E':
                 display_label = 'ENT'
-            
+
             cx = x + BUTTON_WIDTH // 2
             cy = y + BUTTON_HEIGHT // 2
-            
+
+            # Chromatic aberration on label when flashing hard
+            if apply_chromatic:
+                self.canvas.create_text(
+                    cx - chroma_offset, cy,
+                    text=display_label,
+                    font=('Courier New', 16, 'bold'),
+                    fill='#ff0044'
+                )
+                self.canvas.create_text(
+                    cx + chroma_offset, cy,
+                    text=display_label,
+                    font=('Courier New', 16, 'bold'),
+                    fill='#0044ff'
+                )
+
             self.canvas.create_text(
                 cx, cy,
                 text=display_label,
