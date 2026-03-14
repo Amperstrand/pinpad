@@ -15,6 +15,12 @@
   - https://www.youtube.com/watch?v=0q76li3FaRM
   - https://www.youtube.com/watch?v=0pmCchkYOdA
 - Novel excerpt (luminescence ordering): https://pastebin.com/60WPpqbn
+- **Cycle 4 additions**:
+  - Unity URP thermal vision (Fraser Hutchison - fraserh.dev): HSV temperature mapping
+  - Unity thermal post-processing shader (mert-dev-acc/ThermalVisionPostProcessingShader)
+  - GLSL Predator thermal vision (Geeks3D)
+  - Roblox Splinter Cell goggles (pixeldippz): HSV interpolation reference
+  - SCCT Versus Reloaded mod: https://allypal.github.io/SCCT_Versus_Reloaded/
 
 ## Verified Gameplay Behavior
 - Heat marks are a short-lived interaction aid for keypad reconstruction
@@ -24,15 +30,21 @@
 
 ## Color Findings (Reference-Constrained)
 - Confirmed palette ordering from references: dark cool background -> cyan/green mids -> yellow/highlights
-- Red appears in generic thermal descriptions, but keypad interactions in this sequence read cleaner in blue/cyan/green/yellow with near-white peaks
-- Final implementation palette for Splinter Cell mode:
-  - `#050820` cool base
-  - `#0c2a6e` cold-to-mid ramp
-  - `#1478aa` active warm-up
-  - `#52be84` warm key footprint
-  - `#dcda5a` hot
-  - `#ffeb8c` very hot
-  - `#fffadc` peak
+- **CRITICAL UPDATE (Cycle 4)**: Peak color should be warm yellow-orange (#f0d020), NOT near-white (#fffadc)
+  - Source: SC1 Xbox original footage analysis - thermal peaks at yellow-orange, not white
+  - Reference: Unity URP thermal vision (Fraser Hutchison), Roblox SC goggles (pixeldippz)
+- **NEW**: HSV interpolation replaces RGB for perceptually smoother thermal gradients
+  - RGB interpolation causes muddy transitions; HSV maintains hue continuity
+  - Hue wraparound handled for blue→cyan→green→yellow→orange progression
+- **NEW**: Gamma curve (γ=1.3) applied for better perceptual separation between key intensities
+- Final HSV palette stops for Splinter Cell mode (h: 0-360, s: 0-100, v: 0-100):
+  - `t=0.00`: h=230, s=85, v=12 (deep blue-black #05081e)
+  - `t=0.20`: h=225, s=90, v=43 (cobalt #0c2a6b)
+  - `t=0.40`: h=195, s=88, v=67 (cyan #1478b0)
+  - `t=0.62`: h=150, s=58, v=75 (green #52be87)
+  - `t=0.80`: h=55,  s=60, v=86 (yellow #d8da58)
+  - `t=0.92`: h=48,  s=90, v=94 (warm yellow #f0eb64)
+  - `t=1.00`: h=42,  s=88, v=94 (yellow-orange peak #f0d020)
 
 ## Effect Findings
 - Reference behavior reads as soft heat bloom over key surfaces more than hard ring-only rendering
@@ -62,6 +74,22 @@
 - Consolidated cross-platform consistency on final Splinter palette stops
 - Updated docs and comparison scoring
 - Preserved optional alternate palettes without changing core Splinter mode behavior
+
+### Cycle 4
+- **Peak color correction**: Changed from near-white (#fffadc) to warm yellow-orange (#f0d020)
+  - Source: Oracle consultation (session ses_31241dcb1ffeCz6VqXVTdYpHrA)
+  - Reference: SC1 Xbox original peaks at yellow-orange, not white
+- **HSV interpolation**: Replaced RGB linear interpolation with HSV-based
+  - Perceptually smoother color transitions
+  - Proper hue wraparound handling (blue→cyan→green→yellow→orange)
+- **Gamma curve**: Added γ=1.3 for better perceptual separation between intensities
+- **Precomputed LUT**: 256-entry lookup table for performance (especially Rust embedded)
+- **Chromatic aberration** (JS only): RGB channel offset on hot button edges
+  - Triggers at intensity > 0.4
+  - Subtle lens distortion effect on high-heat areas
+- **Film grain**: Noise now updates at ~10fps instead of 60fps
+  - More authentic thermal camera feel
+  - Reduces visual noise while maintaining texture
 
 ## Open Uncertainties
 - Exact frame-accurate 2002 color values vary by platform/version/capture pipeline

@@ -234,21 +234,27 @@ class ThermalKeypad:
 class ThermalColorMapper:
     """Maps intensity values to RGB colors using various palettes.
     
-    Color palettes match the JavaScript reference implementation exactly.
+    For Splinter Cell palette, uses HSV interpolation for perceptually smooth gradients.
+    Other palettes use RGB interpolation.
     """
     
+    # Gamma curve for better perceptual separation (γ=1.3)
+    GAMMA = 1.3
+    
+    # HSV stops for Splinter Cell palette (hue: 0-360, sat: 0-100, val: 0-100)
+    _SPLINTER_HSV_STOPS = [
+        (0.0,  230, 85, 12),   # deep blue-black
+        (0.2,  225, 90, 43),   # cobalt
+        (0.4,  195, 88, 67),   # cyan
+        (0.62, 150, 58, 75),   # green
+        (0.8,  55,  60, 86),   # yellow
+        (0.92, 48,  90, 94),   # warm yellow
+        (1.0,  42,  88, 94),   # yellow-orange peak
+    ]
+    
     # Color palette definitions: list of (t, [r, g, b])
-    # t is the intensity threshold, color is the RGB value at that point
     _PALETTES = {
-        ThermalPalette.SPLINTER_CELL: [
-            (0.0,  [5, 8, 32]),
-            (0.2,  [12, 42, 110]),
-            (0.4,  [20, 120, 170]),
-            (0.62, [82, 190, 132]),
-            (0.8,  [220, 218, 90]),
-            (0.92, [255, 235, 140]),
-            (1.0,  [255, 250, 220]),
-        ],
+        ThermalPalette.SPLINTER_CELL: None,  # Built from HSV LUT at init
         ThermalPalette.CLASSIC: [
             (0.0,  [0, 0, 40]),
             (0.2,  [0, 80, 160]),
@@ -274,28 +280,78 @@ class ThermalColorMapper:
         ],
     }
     
+    def __init__(self):
+        self._splinter_lut = self._build_hsv_lut()
+        self._PALETTES[ThermalPalette.SPLINTER_CELL] = self._splinter_lut
+    
+    @staticmethod
+    def _hsv_to_rgb(h: float, s: float, v: float) -> Tuple[int, int, int]:
+        s /= 100
+        v /= 100
+        c = v * s
+        x = c * (1 - abs(((h / 60) % 2) - 1))
+        m = v - c
+        
+        if h < 60:
+            r, g, b = c, x, 0
+        elif h < 120:
+            r, g, b = x, c, 0
+        elif h < 180:
+            r, g, b = 0, c, x
+        elif h < 240:
+            r, g, b = 0, x, c
+        elif h < 300:
+            r, g, b = x, 0, c
+        else:
+            r, g, b = c, 0, x
+        
+        return (
+            round((r + m) * 255),
+            round((g + m) * 255),
+            round((b + m) * 255)
+        )
+    
+    def _build_hsv_lut(self, size: int = 256) -> list:
+        stops = self._SPLINTER_HSV_STOPS
+        lut = []
+        
+        for i in range(size):
+            t = i / (size - 1)
+            gamma_t = t ** self.GAMMA
+            
+            lower = stops[0]
+            upper = stops[-1]
+            
+            for j in range(len(stops) - 1):
+                if stops[j][0] <= gamma_t <= stops[j + 1][0]:
+                    lower = stops[j]
+                    upper = stops[j + 1]
+                    break
+            
+            range_t = upper[0] - lower[0]
+            factor = 0.0 if range_t == 0 else (gamma_t - lower[0]) / range_t
+            
+            h = lower[1] + (upper[1] - lower[1]) * factor
+            s = lower[2] + (upper[2] - lower[2]) * factor
+            v = lower[3] + (upper[3] - lower[3]) * factor
+            
+            lut.append(self._hsv_to_rgb(h, s, v))
+        
+        return lut
+    
     def intensity_to_rgb(
         self, 
         intensity: float, 
         palette: ThermalPalette = ThermalPalette.SPLINTER_CELL
     ) -> Tuple[int, int, int]:
-        """Convert an intensity value to an RGB color.
-        
-        Uses linear interpolation between color stops in the palette.
-        
-        Args:
-            intensity: Intensity value between 0.0 and 1.0
-            palette: The color palette to use
-            
-        Returns:
-            Tuple of (r, g, b) values (0-255 each)
-        """
-        # Clamp intensity to valid range
         intensity = max(0.0, min(1.0, intensity))
+        
+        if palette == ThermalPalette.SPLINTER_CELL:
+            idx = min(255, max(0, int(intensity * 255)))
+            return self._splinter_lut[idx]
         
         stops = self._PALETTES[palette]
         
-        # Find the two stops to interpolate between
         lower = stops[0]
         upper = stops[-1]
         
@@ -305,7 +361,6 @@ class ThermalColorMapper:
                 upper = stops[i + 1]
                 break
         
-        # Interpolate between the two colors
         t_lower, color_lower = lower
         t_upper, color_upper = upper
         

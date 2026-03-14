@@ -13,16 +13,19 @@
 
 ## Verified Visual Characteristics
 
-### Color Palette (Extracted + Constrained)
-| Element | Hex | Notes |
-|---|---|---|
-| Background cool base | `#050f1e` | dark tactical blue-black |
-| Cold key body | `#0a1022` | unpressed key state |
-| Old heat trace | `#0c2a6e` | earliest visible heat |
-| Mid heat trace | `#1478aa` | cyan/teal phase |
-| Warm heat trace | `#52be84` | green phase |
-| Hot trace | `#dcda5a` | yellow phase |
-| Peak trace | `#fffadc` | near-white highlight |
+### Color Palette (HSV Interpolated, γ=1.3)
+| Stop | HSV (h,s,v) | Hex | Notes |
+|---|---|---|---|
+| 0.00 | 230, 85, 12 | `#05081e` | deep blue-black |
+| 0.20 | 225, 90, 43 | `#0c2a6b` | cobalt |
+| 0.40 | 195, 88, 67 | `#1478b0` | cyan |
+| 0.62 | 150, 58, 75 | `#52be87` | green |
+| 0.80 | 55, 60, 86 | `#d8da58` | yellow |
+| 0.92 | 48, 90, 94 | `#f0eb64` | warm yellow |
+| 1.00 | 42, 88, 94 | `#f0d020` | yellow-orange peak |
+
+**Key change**: Peak is now warm yellow-orange (#f0d020), not near-white (#fffadc).
+This matches SC1 Xbox original thermal vision more accurately.
 
 ### Glow Effect Style
 - Type: layered bloom (soft blob core + falloff aura)
@@ -32,9 +35,9 @@
 
 ### Thermal Overlay Effects
 - Scan lines: Yes (subtle)
-- Noise/grain: Yes (light)
+- Noise/grain: Yes (film grain at ~10fps update rate)
 - Vignette: Yes (mild)
-- Edge detection: No
+- Chromatic aberration: Yes (JS only, on hot edges when intensity > 0.4)
 
 ## Core Mechanics
 
