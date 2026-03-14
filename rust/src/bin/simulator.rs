@@ -222,8 +222,8 @@ impl State {
 
 fn save_screenshot(display: &SimulatorDisplay<Rgb888>, path: &str) {
     let output_settings = OutputSettingsBuilder::new().pixel_spacing(1).build();
-    let image = display.to_output_image(&output_settings);
-    image.save(path).expect("Failed to save screenshot");
+    let image = display.to_rgb_output_image(&output_settings);
+    image.save_png(path).expect("Failed to save screenshot");
     println!("Screenshot saved to: {}", path);
 }
 
