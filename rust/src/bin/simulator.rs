@@ -8,6 +8,7 @@ use embedded_graphics_simulator::{
     OutputSettingsBuilder, SimulatorDisplay, SimulatorEvent, Window,
 };
 use rand::Rng;
+use std::env;
 use std::time::{Duration, Instant};
 
 use thermal_pinpad::{ring_intensity, ThermalColorMapper, ThermalKeypad, ThermalPalette};
@@ -56,7 +57,10 @@ impl State {
     fn rect(&self, row: usize, col: usize) -> Rectangle {
         let x = KEYPAD_MARGIN_X + (col as u32) * (BUTTON_WIDTH + BUTTON_GAP);
         let y = KEYPAD_MARGIN_Y + (row as u32) * (BUTTON_HEIGHT + BUTTON_GAP);
-        Rectangle::new(Point::new(x as i32, y as i32), Size::new(BUTTON_WIDTH, BUTTON_HEIGHT))
+        Rectangle::new(
+            Point::new(x as i32, y as i32),
+            Size::new(BUTTON_WIDTH, BUTTON_HEIGHT),
+        )
     }
 
     fn at_point(&self, p: Point) -> Option<char> {
@@ -83,7 +87,9 @@ impl State {
             let d = loop {
                 let n = rng.gen_range(0..10);
                 let c = char::from_digit(n, 10).unwrap();
-                if used.insert(c) || used.len() >= 10 { break c; }
+                if used.insert(c) || used.len() >= 10 {
+                    break c;
+                }
             };
             self.keypad.press(d, now + (i as u64 * 200));
         }
@@ -125,9 +131,15 @@ impl State {
         display.clear(Rgb888::BLACK).unwrap();
         let style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
 
-        Text::new("Thermal Pinpad - Splinter Cell", Point::new(10, 20), style).draw(display).unwrap();
-        Text::new("D: Demo | R: Reset | P: Palette", Point::new(10, 40), style).draw(display).unwrap();
-        Text::new(&self.status, Point::new(10, 60), style).draw(display).unwrap();
+        Text::new("Thermal Pinpad - Splinter Cell", Point::new(10, 20), style)
+            .draw(display)
+            .unwrap();
+        Text::new("D: Demo | R: Reset | P: Palette", Point::new(10, 40), style)
+            .draw(display)
+            .unwrap();
+        Text::new(&self.status, Point::new(10, 60), style)
+            .draw(display)
+            .unwrap();
 
         let cfg = self.keypad.config();
         let now = self.ms();
@@ -137,7 +149,11 @@ impl State {
             for col in 0..3 {
                 let label = LABELS[row][col];
                 let rect = self.rect(row, col);
-                let intensity = ints.iter().find(|(l, _)| *l == label).map(|(_, i)| *i).unwrap_or(0.0);
+                let intensity = ints
+                    .iter()
+                    .find(|(l, _)| *l == label)
+                    .map(|(_, i)| *i)
+                    .unwrap_or(0.0);
 
                 let bg = if intensity >= cfg.min_visible_intensity {
                     self.color_mapper.intensity_to_rgb(intensity)
@@ -146,8 +162,14 @@ impl State {
                 };
 
                 rect.into_styled(
-                    PrimitiveStyleBuilder::new().fill_color(bg).stroke_color(Rgb888::new(60, 60, 80)).stroke_width(2).build()
-                ).draw(display).unwrap();
+                    PrimitiveStyleBuilder::new()
+                        .fill_color(bg)
+                        .stroke_color(Rgb888::new(60, 60, 80))
+                        .stroke_width(2)
+                        .build(),
+                )
+                .draw(display)
+                .unwrap();
 
                 if intensity >= cfg.min_visible_intensity {
                     let center = rect.center();
@@ -156,28 +178,85 @@ impl State {
                         let ri = ring_intensity(intensity, ring, cfg.num_rings);
                         if ri >= cfg.min_visible_intensity {
                             let rc = self.color_mapper.intensity_to_rgb(ri);
-                            let r = (max_r as f32 * (ring as f32 + 1.0) / cfg.num_rings as f32) as u32;
-                            Circle::with_center(center, r).into_styled(
-                                PrimitiveStyleBuilder::new().stroke_color(rc).stroke_width(1).build()
-                            ).draw(display).unwrap();
+                            let r =
+                                (max_r as f32 * (ring as f32 + 1.0) / cfg.num_rings as f32) as u32;
+                            Circle::with_center(center, r)
+                                .into_styled(
+                                    PrimitiveStyleBuilder::new()
+                                        .stroke_color(rc)
+                                        .stroke_width(1)
+                                        .build(),
+                                )
+                                .draw(display)
+                                .unwrap();
                         }
                     }
                 }
 
-                Text::new(&label.to_string(), Point::new(rect.center().x - 3, rect.center().y + 4), style).draw(display).unwrap();
+                Text::new(
+                    &label.to_string(),
+                    Point::new(rect.center().x - 3, rect.center().y + 4),
+                    style,
+                )
+                .draw(display)
+                .unwrap();
             }
         }
 
-        Text::new(&format!("{:?}", self.palette), Point::new(10, DISPLAY_HEIGHT as i32 - 30), style).draw(display).unwrap();
-        Text::new(if self.demo { "Demo: ON" } else { "Demo: OFF" }, Point::new(10, DISPLAY_HEIGHT as i32 - 15), style).draw(display).unwrap();
+        Text::new(
+            &format!("{:?}", self.palette),
+            Point::new(10, DISPLAY_HEIGHT as i32 - 30),
+            style,
+        )
+        .draw(display)
+        .unwrap();
+        Text::new(
+            if self.demo { "Demo: ON" } else { "Demo: OFF" },
+            Point::new(10, DISPLAY_HEIGHT as i32 - 15),
+            style,
+        )
+        .draw(display)
+        .unwrap();
     }
 }
 
+fn save_screenshot(display: &SimulatorDisplay<Rgb888>, path: &str) {
+    let output_settings = OutputSettingsBuilder::new().pixel_spacing(1).build();
+    let image = display.to_output_image(&output_settings);
+    image.save(path).expect("Failed to save screenshot");
+    println!("Screenshot saved to: {}", path);
+}
+
 fn main() {
+    // Check for --screenshot flag
+    let args: Vec<String> = env::args().collect();
+    let screenshot_path = args
+        .iter()
+        .position(|arg| arg == "--screenshot")
+        .and_then(|i| args.get(i + 1))
+        .map(|s| s.to_string());
+
     let out = OutputSettingsBuilder::new().pixel_spacing(1).build();
     let mut display = SimulatorDisplay::<Rgb888>::new(Size::new(DISPLAY_WIDTH, DISPLAY_HEIGHT));
-    let mut window = Window::new("Thermal Pinpad", &out);
     let mut state = State::new();
+
+    // If screenshot mode, render one frame and exit
+    if let Some(path) = screenshot_path {
+        // Simulate some button presses for visual interest
+        state.press('5');
+        std::thread::sleep(Duration::from_millis(100));
+        state.press('2');
+        std::thread::sleep(Duration::from_millis(100));
+        state.press('7');
+
+        state.update();
+        state.draw(&mut display);
+        save_screenshot(&display, &path);
+        return;
+    }
+
+    // Interactive mode
+    let mut window = Window::new("Thermal Pinpad", &out);
 
     loop {
         state.update();
