@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mr. Robot FBI Keypad - fsociety</title>
+    <style>
+        /* ===========================================
+           ROOT STYLES & MR. ROBOT HACKER THEME
+           =========================================== */
+        :root {
+            --deep-black: #0a0a0a;
+            --dark-navy: #0a181c;
+            --phosphor-green: #00FF41;
+            --dim-green: #008020;
+            --terminal-bg: #001400;
+            --cyan: #7aecff;
+            --teal: #1e505f;
+            --error-red: #ff3333;
+            --success-green: #00ff00;
+            --warning-amber: #ffaa00;
+            --glow-green: rgba(0, 255, 65, 0.5);
+            --scanline-color: rgba(0, 0, 0, 0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Meslo LG S Mono', 'Monaco', 'Fira Code Medium', 'Consolas', monospace;
+            background: var(--deep-black);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--phosphor-green);
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        /* ===========================================
+           CRT SCANLINE OVERLAY
+           =========================================== */
+        .crt-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1000;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                var(--scanline-color) 2px,
+                var(--scanline-color) 4px
+            );
+        }
+
+        /* ===========================================
+           MAIN CONTAINER
+           =========================================== */
+        .container {
+            background: var(--dark-navy);
+            border: 1px solid var(--teal);
+            border-radius: 4px;
+            padding: 20px;
+            position: relative;
+            box-shadow: 
+                0 0 30px rgba(0, 255, 65, 0.1),
+                inset 0 0 60px rgba(0, 20, 0, 0.3);
+        }
+
+        /* ===========================================
+           TERMINAL HEADER
+           =========================================== */
+        .terminal-header {
+            font-size: 11px;
+            color: var(--dim-green);
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--teal);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .terminal-header .user {
+            color: var(--cyan);
+        }
+
+        .terminal-header .host {
+            color: var(--phosphor-green);
+        }
+
+        .terminal-header .path {
+            color: var(--dim-green);
+        }
+
+        /* ===========================================
+           TERMINAL OUTPUT
+           =========================================== */
+        .terminal-output {
+            font-size: 13px;
+            line-height: 1.4;
+            color: var(--phosphor-green);
+            margin-bottom: 15px;
+            min-height: 80px;
+            text-shadow: 0 0 5px var(--glow-green),
+                         0 0 10px rgba(0, 255, 65, 0.3);
+        }
+
+        .terminal-output .line {
+            margin-bottom: 2px;
+        }
+
+        .terminal-output .prompt {
+            color: var(--cyan);
+        }
+
+        .terminal-output .command {
+            color: var(--phosphor-green);
+        }
+
+        .terminal-output .status {
+            color: var(--dim-green);
+        }
+
+        .terminal-output .status.success {
+            color: var(--success-green);
+        }
+
+        .terminal-output .status.error {
+            color: var(--error-red);
+        }
+
+        /* ===========================================
+           CANVAS
+           =========================================== */
+        #pinpadCanvas {
+            display: block;
+            border: 1px solid var(--teal);
+            border-radius: 2px;
+            background: var(--deep-black);
+        }
+
+        /* ===========================================
+           STATUS BAR
+           =========================================== */
+        .status-bar {
+            margin-top: 15px;
+            padding: 8px 12px;
+            background: rgba(0, 20, 0, 0.6);
+            border: 1px solid var(--teal);
+            border-radius: 2px;
+        }
+
+        .status-text {
+            font-size: 11px;
+            color: var(--dim-green);
+            letter-spacing: 0.5px;
+        }
+
+        /* ===========================================
+           CONTROLS
+           =========================================== */
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .btn {
+            background: rgba(0, 40, 20, 0.4);
+            border: 1px solid var(--dim-green);
+            color: var(--phosphor-green);
+            padding: 6px 12px;
+            font-family: inherit;
+            font-size: 10px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            cursor: pointer;
+            border-radius: 2px;
+            transition: all 0.15s ease;
+            text-shadow: 0 0 5px var(--glow-green);
+        }
+
+        .btn:hover {
+            background: rgba(0, 255, 65, 0.15);
+            border-color: var(--phosphor-green);
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.3);
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn.active {
+            background: rgba(0, 255, 65, 0.2);
+            border-color: var(--phosphor-green);
+        }
+
+        /* ===========================================
+           CURSOR BLINK ANIMATION
+           =========================================== */
+        @keyframes cursor-blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 8px;
+            height: 14px;
+            background: var(--phosphor-green);
+            animation: cursor-blink 530ms step-end infinite;
+            vertical-align: middle;
+            margin-left: 2px;
+            box-shadow: 0 0 5px var(--glow-green);
+        }
+
+        /* ===========================================
+           INSTRUCTIONS
+           =========================================== */
+        .instructions {
+            margin-top: 15px;
+            font-size: 9px;
+            color: var(--dim-green);
+            text-align: center;
+            letter-spacing: 0.5px;
+            max-width: 320px;
+        }
+    </style>
+</head>
+<body>
+    <!-- CRT Scanline Overlay -->
+    <div class="crt-overlay"></div>
+
+    <div class="container">
+        <!-- Terminal Header -->
+        <div class="terminal-header">
+            <span><span class="user">fsociety</span>@<span class="host">fbi-target</span>:<span class="path">~</span>$</span>
+            <span id="clock"></span>
+        </div>
+
+        <!-- Terminal Output -->
+        <div class="terminal-output" id="terminalOutput">
+            <div class="line">[*] FBI Femtocell Interception System v2.5</div>
+            <div class="line">[*] Target: E Corp HQ, Floor 23</div>
+            <div class="line status">[+] System ready. Enter PIN to authenticate.<span class="cursor"></span></div>
+        </div>
+
+        <!-- PIN Entry Display -->
+        <div class="pin-display" id="pinDisplay">
+            <canvas id="pinpadCanvas" width="280" height="340"></canvas>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-text" id="statusText">READY - Enter PIN to authenticate</div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <button class="btn" id="demoBtn">Demo</button>
+            <button class="btn" id="resetBtn">Reset</button>
+            <button class="btn" id="clearBtn">Clear PIN</button>
+        </div>
+    </div>
+
+    <div class="instructions">
+        Classic hacker terminal aesthetic. Green phosphor on black.
+    </div>
+
+    <script>
+        // ===========================================
+        // MR. ROBOT FBI KEYPAD - Hacker Terminal Style
+        // Pure Vanilla JavaScript Implementation
+        // ===========================================
+
+        (function() {
+            'use strict';
+
+            // ===========================================
+            // CONFIGURATION CONSTANTS
+            // ===========================================
+            const CONFIG = {
+                // Colors (matching spec exactly)
+                DEEP_BLACK: '#0a0a0a',
+                PHOSPHOR_GREEN: '#00FF41',
+                DIM_GREEN: '#008020',
+                TERMINAL_BG: '#001400',
+                CYAN: '#7aecff',
+                TEAL: '#1e505f',
+                ERROR_RED: '#ff3333',
+                SUCCESS_GREEN: '#00ff00',
+                GLOW_GREEN: 'rgba(0, 255, 65, 0.5)',
+
+                // Canvas dimensions
+                CANVAS_WIDTH: 280,
+                CANVAS_HEIGHT: 340,
+
+                // Button layout
+                BUTTONS: [
+                    '1', '2', '3',
+                    '4', '5', '6',
+                    '7', '8', '9',
+                    'C', '0', 'E'
+                ],
+                BUTTONS_PER_ROW: 3,
+                BUTTON_WIDTH: 70,
+                BUTTON_HEIGHT: 55,
+                BUTTON_GAP: 12,
+                MARGIN_X: 28,
+                MARGIN_Y: 20,
+
+                // PIN settings
+                MAX_PIN_LENGTH: 6,
+                CORRECT_PIN: '1234', // Demo PIN
+
+                // Animation settings
+                CURSOR_BLINK_MS: 530,
+                TYPING_DELAY_MS: 30,
+                TYPING_VARIANCE_MS: 15,
+                TARGET_FPS: 60
+            };
+
+            // ===========================================
+            // STATE MANAGEMENT
+            // ===========================================
+            const state = {
+                // PIN entry
+                enteredPin: '',
+                pinDisplay: '',
+
+                // Button states
+                buttonStates: new Map(), // 'pressed' timestamp or null
+
+                // Demo mode
+                demoMode: false,
+                demoInterval: null,
+
+                // Animation
+                lastFrameTime: 0,
+                animationId: null,
+                cursorBlinkState: true,
+                lastCursorBlink: 0,
+
+                // UI references
+                canvas: null,
+                ctx: null,
+                statusText: null,
+                terminalOutput: null
+            };
+
+            // ===========================================
+            // INITIALIZATION
+            // ===========================================
+            function init() {
+                // Get DOM references
+                state.canvas = document.getElementById('pinpadCanvas');
+                state.ctx = state.canvas.getContext('2d');
+                state.statusText = document.getElementById('statusText');
+                state.terminalOutput = document.getElementById('terminalOutput');
+
+                // Initialize button states
+                CONFIG.BUTTONS.forEach(label => {
+                    state.buttonStates.set(label, null);
+                });
+
+                // Setup event listeners
+                setupEventListeners();
+
+                // Start clock
+                updateClock();
+                setInterval(updateClock, 1000);
+
+                // Start animation loop
+                startAnimation();
+
+                // Initial status
+                updateStatus('READY - Enter PIN to authenticate');
+            }
+
+            // ===========================================
+            // EVENT HANDLERS
+            // ===========================================
+            function setupEventListeners() {
+                // Canvas click handler
+                state.canvas.addEventListener('click', handleCanvasClick);
+
+                // Keyboard support
+                document.addEventListener('keydown', handleKeyPress);
+
+                // Button controls
+                document.getElementById('demoBtn').addEventListener('click', toggleDemoMode);
+                document.getElementById('resetBtn').addEventListener('click', resetAll);
+                document.getElementById('clearBtn').addEventListener('click', clearPin);
+            }
+
+            /**
+             * Handle click on canvas to detect button press
+             */
+            function handleCanvasClick(event) {
+                const rect = state.canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+
+                const buttonLabel = getButtonAtPosition(x, y);
+                if (buttonLabel !== null) {
+                    pressButton(buttonLabel);
+                }
+            }
+
+            /**
+             * Handle keyboard input
+             */
+            function handleKeyPress(event) {
+                const key = event.key;
+
+                // Number keys
+                if (/^[0-9]$/.test(key)) {
+                    pressButton(key);
+                }
+                // Enter key
+                else if (key === 'Enter') {
+                    pressButton('E');
+                }
+                // Escape/Backspace for clear
+                else if (key === 'Escape' || key === 'Backspace') {
+                    pressButton('C');
+                }
+            }
+
+            /**
+             * Determine which button is at the given canvas coordinates
+             */
+            function getButtonAtPosition(x, y) {
+                for (let i = 0; i < CONFIG.BUTTONS.length; i++) {
+                    const buttonPos = getButtonPosition(i);
+
+                    if (x >= buttonPos.x &&
+                        x <= buttonPos.x + CONFIG.BUTTON_WIDTH &&
+                        y >= buttonPos.y &&
+                        y <= buttonPos.y + CONFIG.BUTTON_HEIGHT) {
+                        return CONFIG.BUTTONS[i];
+                    }
+                }
+                return null;
+            }
+
+            /**
+             * Get the top-left position of a button by index
+             */
+            function getButtonPosition(index) {
+                const row = Math.floor(index / CONFIG.BUTTONS_PER_ROW);
+                const col = index % CONFIG.BUTTONS_PER_ROW;
+
+                return {
+                    x: CONFIG.MARGIN_X + col * (CONFIG.BUTTON_WIDTH + CONFIG.BUTTON_GAP),
+                    y: CONFIG.MARGIN_Y + row * (CONFIG.BUTTON_HEIGHT + CONFIG.BUTTON_GAP)
+                };
+            }
+
+            /**
+             * Press a button - record timestamp and handle PIN entry
+             */
+            function pressButton(label) {
+                const now = Date.now();
+                state.buttonStates.set(label, now);
+
+                // Handle special buttons
+                if (label === 'C') {
+                    // Clear
+                    clearPin();
+                    addTerminalLine('[*] PIN cleared', 'status');
+                } else if (label === 'E') {
+                    // Enter - verify PIN
+                    verifyPin();
+                } else if (/^[0-9]$/.test(label)) {
+                    // Digit - add to PIN
+                    if (state.enteredPin.length < CONFIG.MAX_PIN_LENGTH) {
+                        state.enteredPin += label;
+                        updatePinDisplay();
+                    }
+                }
+
+                updateStatus(`Button "${label}" pressed`);
+            }
+
+            /**
+             * Update PIN display with asterisks
+             */
+            function updatePinDisplay() {
+                state.pinDisplay = '*'.repeat(state.enteredPin.length);
+            }
+
+            /**
+             * Verify the entered PIN
+             */
+            function verifyPin() {
+                if (state.enteredPin.length === 0) {
+                    addTerminalLine('[!] No PIN entered', 'status error');
+                    updateStatus('ERROR - No PIN entered');
+                    return;
+                }
+
+                addTerminalLine(`[*] Verifying PIN: ${'*'.repeat(state.enteredPin.length)}`, 'status');
+
+                if (state.enteredPin === CONFIG.CORRECT_PIN) {
+                    addTerminalLine('[+] ACCESS GRANTED', 'status success');
+                    addTerminalLine('[+] Femtocell interception active', 'status success');
+                    addTerminalLine('[+] Data exfiltration in progress...', 'status success');
+                    updateStatus('ACCESS GRANTED - Welcome, fsociety');
+                } else {
+                    addTerminalLine('[-] ACCESS DENIED', 'status error');
+                    addTerminalLine('[!] Invalid PIN. Attempts logged.', 'status error');
+                    updateStatus('ACCESS DENIED - Invalid PIN');
+                }
+
+                // Clear PIN after attempt
+                setTimeout(() => {
+                    clearPin();
+                }, 1000);
+            }
+
+            /**
+             * Clear the entered PIN
+             */
+            function clearPin() {
+                state.enteredPin = '';
+                state.pinDisplay = '';
+            }
+
+            /**
+             * Reset all state
+             */
+            function resetAll() {
+                clearPin();
+                CONFIG.BUTTONS.forEach(label => {
+                    state.buttonStates.set(label, null);
+                });
+                clearTerminal();
+                addTerminalLine('[*] System reset', 'status');
+                updateStatus('System reset - Ready');
+            }
+
+            /**
+             * Toggle demo mode on/off
+             */
+            function toggleDemoMode() {
+                state.demoMode = !state.demoMode;
+                const btn = document.getElementById('demoBtn');
+
+                if (state.demoMode) {
+                    btn.classList.add('active');
+                    btn.textContent = 'Stop';
+                    updateStatus('Demo mode active');
+                    startDemoSequence();
+                } else {
+                    btn.classList.remove('active');
+                    btn.textContent = 'Demo';
+                    updateStatus('Demo mode stopped');
+                    stopDemoSequence();
+                }
+            }
+
+            /**
+             * Start the demo sequence
+             */
+            function startDemoSequence() {
+                // Enter a code immediately
+                setTimeout(() => {
+                    if (state.demoMode) {
+                        enterDemoPin();
+                    }
+                }, 500);
+
+                // Then every 5 seconds
+                state.demoInterval = setInterval(() => {
+                    if (state.demoMode) {
+                        enterDemoPin();
+                    }
+                }, 5000);
+            }
+
+            /**
+             * Stop the demo sequence
+             */
+            function stopDemoSequence() {
+                if (state.demoInterval) {
+                    clearInterval(state.demoInterval);
+                    state.demoInterval = null;
+                }
+            }
+
+            /**
+             * Enter demo PIN with typing effect
+             */
+            function enterDemoPin() {
+                const demoPins = ['1234', '0000', '9999', '1337'];
+                const pin = demoPins[Math.floor(Math.random() * demoPins.length)];
+
+                addTerminalLine(`[*] Demo: Entering PIN ${pin}`, 'status');
+
+                pin.split('').forEach((digit, index) => {
+                    setTimeout(() => {
+                        pressButton(digit);
+                    }, index * 200);
+                });
+
+                // Press enter after PIN
+                setTimeout(() => {
+                    pressButton('E');
+                }, pin.length * 200 + 300);
+            }
+
+            /**
+             * Add a line to terminal output
+             */
+            function addTerminalLine(text, className = '') {
+                const line = document.createElement('div');
+                line.className = `line ${className}`;
+                line.textContent = text;
+
+                // Remove cursor from previous line
+                const cursor = state.terminalOutput.querySelector('.cursor');
+                if (cursor) {
+                    cursor.remove();
+                }
+
+                state.terminalOutput.appendChild(line);
+
+                // Add cursor back
+                const cursorSpan = document.createElement('span');
+                cursorSpan.className = 'cursor';
+                line.appendChild(cursorSpan);
+
+                // Scroll to bottom
+                state.terminalOutput.scrollTop = state.terminalOutput.scrollHeight;
+            }
+
+            /**
+             * Clear terminal output
+             */
+            function clearTerminal() {
+                state.terminalOutput.innerHTML = '';
+            }
+
+            /**
+             * Update status text
+             */
+            function updateStatus(text) {
+                state.statusText.textContent = text;
+            }
+
+            /**
+             * Update clock display
+             */
+            function updateClock() {
+                const now = new Date();
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+                document.getElementById('clock').textContent = `${hours}:${minutes}:${seconds}`;
+            }
+
+            // ===========================================
+            // RENDERING
+            // ===========================================
+
+            /**
+             * Main animation loop
+             */
+            function startAnimation() {
+                function loop(timestamp) {
+                    const deltaTime = timestamp - state.lastFrameTime;
+
+                    if (deltaTime >= 1000 / CONFIG.TARGET_FPS) {
+                        state.lastFrameTime = timestamp;
+
+                        // Update cursor blink
+                        if (timestamp - state.lastCursorBlink >= CONFIG.CURSOR_BLINK_MS) {
+                            state.cursorBlinkState = !state.cursorBlinkState;
+                            state.lastCursorBlink = timestamp;
+                        }
+
+                        render();
+                    }
+
+                    state.animationId = requestAnimationFrame(loop);
+                }
+
+                state.animationId = requestAnimationFrame(loop);
+            }
+
+            /**
+             * Main render function
+             */
+            function render() {
+                const ctx = state.ctx;
+                const canvas = state.canvas;
+
+                // Clear canvas with deep black
+                ctx.fillStyle = CONFIG.DEEP_BLACK;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Draw subtle background gradient
+                drawBackground(ctx, canvas);
+
+                // Draw PIN display area
+                drawPinDisplay(ctx);
+
+                // Draw all buttons
+                CONFIG.BUTTONS.forEach((label, index) => {
+                    drawButton(ctx, index, label);
+                });
+            }
+
+            /**
+             * Draw subtle background gradient
+             */
+            function drawBackground(ctx, canvas) {
+                const gradient = ctx.createRadialGradient(
+                    canvas.width / 2, canvas.height / 2, 0,
+                    canvas.width / 2, canvas.height / 2, canvas.width
+                );
+                gradient.addColorStop(0, 'rgba(0, 30, 0, 0.3)');
+                gradient.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            /**
+             * Draw PIN display area
+             */
+            function drawPinDisplay(ctx) {
+                const displayWidth = CONFIG.CANVAS_WIDTH - CONFIG.MARGIN_X * 2;
+                const displayHeight = 35;
+                const displayX = CONFIG.MARGIN_X;
+                const displayY = CONFIG.MARGIN_Y - displayHeight - 10;
+
+                // Display background
+                ctx.fillStyle = CONFIG.TERMINAL_BG;
+                roundRect(ctx, displayX, displayY, displayWidth, displayHeight, 2);
+                ctx.fill();
+
+                // Display border
+                ctx.strokeStyle = CONFIG.TEAL;
+                ctx.lineWidth = 1;
+                roundRect(ctx, displayX, displayY, displayWidth, displayHeight, 2);
+                ctx.stroke();
+
+                // PIN text (asterisks)
+                ctx.font = '18px "Meslo LG S Mono", Monaco, monospace';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = CONFIG.PHOSPHOR_GREEN;
+                ctx.shadowColor = CONFIG.GLOW_GREEN;
+                ctx.shadowBlur = 5;
+
+                const textX = displayX + displayWidth / 2;
+                const textY = displayY + displayHeight / 2;
+                ctx.fillText(state.pinDisplay || '_'.repeat(4), textX, textY);
+
+                // Blinking cursor
+                if (state.cursorBlinkState && state.enteredPin.length < CONFIG.MAX_PIN_LENGTH) {
+                    const cursorX = textX + ctx.measureText(state.pinDisplay).width / 2 + 5;
+                    ctx.fillRect(cursorX, textY - 8, 8, 16);
+                }
+
+                ctx.shadowBlur = 0;
+            }
+
+            /**
+             * Draw a single button with phosphor glow effect
+             */
+            function drawButton(ctx, index, label) {
+                const pos = getButtonPosition(index);
+                const pressTime = state.buttonStates.get(label);
+                const isPressed = pressTime !== null && (Date.now() - pressTime) < 150;
+
+                // Button center for glow effect
+                const centerX = pos.x + CONFIG.BUTTON_WIDTH / 2;
+                const centerY = pos.y + CONFIG.BUTTON_HEIGHT / 2;
+
+                // Draw glow if pressed
+                if (isPressed) {
+                    drawButtonGlow(ctx, centerX, centerY);
+                }
+
+                // Draw button background
+                drawButtonBackground(ctx, pos, isPressed);
+
+                // Draw button border
+                drawButtonBorder(ctx, pos, isPressed);
+
+                // Draw button label
+                drawButtonLabel(ctx, pos, label, isPressed);
+            }
+
+            /**
+             * Draw button glow effect
+             */
+            function drawButtonGlow(ctx, centerX, centerY) {
+                const gradient = ctx.createRadialGradient(
+                    centerX, centerY, 0,
+                    centerX, centerY, 50
+                );
+                gradient.addColorStop(0, 'rgba(0, 255, 65, 0.4)');
+                gradient.addColorStop(0.5, 'rgba(0, 255, 65, 0.15)');
+                gradient.addColorStop(1, 'rgba(0, 255, 65, 0)');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 50, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            /**
+             * Draw button background
+             */
+            function drawButtonBackground(ctx, pos, isPressed) {
+                if (isPressed) {
+                    ctx.fillStyle = 'rgba(0, 255, 65, 0.15)';
+                } else {
+                    ctx.fillStyle = 'rgba(0, 20, 0, 0.6)';
+                }
+
+                roundRect(ctx, pos.x, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
+                ctx.fill();
+            }
+
+            /**
+             * Draw button border
+             */
+            function drawButtonBorder(ctx, pos, isPressed) {
+                ctx.strokeStyle = isPressed ? CONFIG.PHOSPHOR_GREEN : CONFIG.DIM_GREEN;
+                ctx.lineWidth = 1;
+                roundRect(ctx, pos.x, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
+                ctx.stroke();
+            }
+
+            /**
+             * Draw button label
+             */
+            function drawButtonLabel(ctx, pos, label, isPressed) {
+                ctx.font = 'bold 18px "Meslo LG S Mono", Monaco, monospace';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                const centerX = pos.x + CONFIG.BUTTON_WIDTH / 2;
+                const centerY = pos.y + CONFIG.BUTTON_HEIGHT / 2;
+
+                if (isPressed) {
+                    ctx.fillStyle = CONFIG.PHOSPHOR_GREEN;
+                    ctx.shadowColor = CONFIG.GLOW_GREEN;
+                    ctx.shadowBlur = 10;
+                } else {
+                    ctx.fillStyle = CONFIG.PHOSPHOR_GREEN;
+                    ctx.shadowBlur = 0;
+                }
+
+                // Special labels
+                let displayLabel = label;
+                if (label === 'C') displayLabel = 'CLR';
+                else if (label === 'E') displayLabel = 'ENT';
+
+                ctx.fillText(displayLabel, centerX, centerY);
+                ctx.shadowBlur = 0;
+            }
+
+            /**
+             * Helper: Draw rounded rectangle path
+             */
+            function roundRect(ctx, x, y, width, height, radius) {
+                ctx.beginPath();
+                ctx.moveTo(x + radius, y);
+                ctx.lineTo(x + width - radius, y);
+                ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+                ctx.lineTo(x + width, y + height - radius);
+                ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+                ctx.lineTo(x + radius, y + height);
+                ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+                ctx.lineTo(x, y + radius);
+                ctx.quadraticCurveTo(x, y, x + radius, y);
+                ctx.closePath();
+            }
+
+            // ===========================================
+            // START APPLICATION
+            // ===========================================
+            document.addEventListener('DOMContentLoaded', init);
+
+        })();
+    </script>
+</body>
+</html>

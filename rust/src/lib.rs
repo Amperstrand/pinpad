@@ -21,7 +21,7 @@
 //! ## Example - Thermal
 //!
 //! ```rust
-//! use pinpad::{ThermalKeypad, ThermalConfig, ThermalPalette, ThermalColorMapper};
+//! use thermal_pinpad::{ThermalKeypad, ThermalConfig, ThermalPalette, ThermalColorMapper};
 //!
 //! // Create a keypad with default config
 //! let mut keypad = ThermalKeypad::new();
@@ -48,7 +48,7 @@
 //! ## Example - Sevastolink
 //!
 //! ```rust
-//! use pinpad::{SevastolinkKeypad, SevastolinkConfig, AuthState, PressResult};
+//! use thermal_pinpad::{SevastolinkKeypad, SevastolinkConfig, AuthState, PressResult};
 //!
 //! // Create a Sevastolink terminal
 //! let mut keypad = SevastolinkKeypad::new();
