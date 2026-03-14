@@ -87,13 +87,13 @@ impl ThermalPalette {
 ///
 /// Dark blue/black → purple → cyan/teal → green → yellow-green → yellow → orange
 static SPINTER_CELL_STOPS: [ColorStop; 7] = [
-    ColorStop::new(0.00, 10, 10, 26),   // Dark blue/black
-    ColorStop::new(0.15, 26, 10, 46),   // Purple/dark blue
-    ColorStop::new(0.30, 26, 74, 94),   // Cyan/teal
-    ColorStop::new(0.50, 42, 138, 74),  // Green
-    ColorStop::new(0.70, 138, 170, 42), // Yellow-green
-    ColorStop::new(0.85, 202, 202, 74), // Yellow
-    ColorStop::new(1.00, 234, 138, 42), // Orange
+    ColorStop::new(0.00, 5, 8, 32),
+    ColorStop::new(0.20, 12, 42, 110),
+    ColorStop::new(0.40, 20, 120, 170),
+    ColorStop::new(0.62, 82, 190, 132),
+    ColorStop::new(0.80, 220, 218, 90),
+    ColorStop::new(0.92, 255, 235, 140),
+    ColorStop::new(1.00, 255, 250, 220),
 ];
 
 /// Classic thermal palette color stops.
@@ -259,11 +259,11 @@ mod tests {
 
         // Test cold (0.0)
         let cold = mapper.intensity_to_rgb(0.0);
-        assert_eq!(cold, Rgb888::new(10, 10, 26));
+        assert_eq!(cold, Rgb888::new(5, 8, 32));
 
         // Test hot (1.0)
         let hot = mapper.intensity_to_rgb(1.0);
-        assert_eq!(hot, Rgb888::new(234, 138, 42));
+        assert_eq!(hot, Rgb888::new(255, 250, 220));
     }
 
     #[test]

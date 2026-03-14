@@ -63,7 +63,7 @@ jobs:
           const puppeteer = require('puppeteer');
 
           const pinpads = [
-            { file: 'thermal-pinpad.html', output: 'thermal-pinpad-js.png', buttonId: 'randomCodeBtn' },
+            { file: 'thermal-pinpad.html', output: 'thermal-pinpad-js.png', buttonId: 'randomBtn' },
             { file: 'sevastolink-pinpad.html', output: 'sevastolink-pinpad-js.png', buttonId: 'randomBtn' },
             { file: 'mr-robot-pinpad.html', output: 'mr-robot-pinpad-js.png', buttonId: 'randomBtn' },
           ];

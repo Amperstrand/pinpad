@@ -11,12 +11,14 @@ A collection of pinpad implementations from movies, video games, and popular cul
 - [Live Demo (GitHub Pages)](https://amperstrand.github.io/pinpad/)
 - [Screenshots Gallery](https://amperstrand.github.io/pinpad/#screenshots)
 - [CI Pipeline](https://github.com/Amperstrand/pinpad/actions/workflows/screenshots.yml)
+- [Thermal Visual Analysis](research/pinpads/thermal-splinter-cell/visual-analysis.md)
+- [Cycle Comparisons](research/pinpads/thermal-splinter-cell/comparisons/)
 
 ## Current Project
 
 **Thermal Pinpad** - Splinter Cell (2002) thermal vision effect
 
-See [MISSION.md](MISSION.md) for project overview andSee [research/pinpads/thermal-splinter-cell/spec.md](research/pinpads/thermal-splinter-cell/spec.md) for detailed specifications.
+See [MISSION.md](MISSION.md) for project overview and [research/pinpads/thermal-splinter-cell/spec.md](research/pinpads/thermal-splinter-cell/spec.md) for detailed specifications.
 
 ## Implementations
 
@@ -123,10 +125,16 @@ cargo run --features simulator
 
 | Palette | Description |
 |---------|-------------|
-| Splinter Cell | Dark blue → cyan → green → yellow → orange (default) |
+| Splinter Cell | Deep blue-black -> cobalt -> cyan -> green -> yellow -> near-white (default) |
 | Classic | Blue → cyan → yellow → orange → red |
 | Ironbow | Black → purple → red → orange → yellow → white |
 | Hot/Cold | Blue → white → red |
+
+## Visual Accuracy Notes
+
+- The Splinter Cell palette and glow style were refined through a 3-cycle process documented in `research/pinpads/thermal-splinter-cell/visual-analysis.md`.
+- Cycle-by-cycle artifacts and analyses are in `research/pinpads/thermal-splinter-cell/comparisons/`.
+- Final target preserves gameplay clarity first: brightest key = most recent press, faintest key = oldest press.
 
 ## Thermal Effect Details
 

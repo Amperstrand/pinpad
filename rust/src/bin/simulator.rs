@@ -128,7 +128,7 @@ impl State {
     }
 
     fn draw(&self, display: &mut SimulatorDisplay<Rgb888>) {
-        display.clear(Rgb888::BLACK).unwrap();
+        display.clear(Rgb888::new(5, 8, 32)).unwrap();
         let style = MonoTextStyle::new(&FONT_6X10, Rgb888::WHITE);
 
         Text::new("Thermal Pinpad - Splinter Cell", Point::new(10, 20), style)
@@ -156,9 +156,9 @@ impl State {
                     .unwrap_or(0.0);
 
                 let bg = if intensity >= cfg.min_visible_intensity {
-                    self.color_mapper.intensity_to_rgb(intensity)
+                    self.color_mapper.intensity_to_rgb(intensity * 0.55)
                 } else {
-                    Rgb888::new(20, 20, 40)
+                    Rgb888::new(10, 16, 34)
                 };
 
                 rect.into_styled(
@@ -174,19 +174,14 @@ impl State {
                 if intensity >= cfg.min_visible_intensity {
                     let center = rect.center();
                     let max_r = (BUTTON_WIDTH.min(BUTTON_HEIGHT) / 2) as i32;
-                    for ring in 0..cfg.num_rings {
+                    for ring in (0..cfg.num_rings).rev() {
                         let ri = ring_intensity(intensity, ring, cfg.num_rings);
                         if ri >= cfg.min_visible_intensity {
-                            let rc = self.color_mapper.intensity_to_rgb(ri);
+                            let rc = self.color_mapper.intensity_to_rgb(ri * 0.9);
                             let r =
                                 (max_r as f32 * (ring as f32 + 1.0) / cfg.num_rings as f32) as u32;
                             Circle::with_center(center, r)
-                                .into_styled(
-                                    PrimitiveStyleBuilder::new()
-                                        .stroke_color(rc)
-                                        .stroke_width(1)
-                                        .build(),
-                                )
+                                .into_styled(PrimitiveStyleBuilder::new().fill_color(rc).build())
                                 .draw(display)
                                 .unwrap();
                         }
@@ -217,6 +212,17 @@ impl State {
         )
         .draw(display)
         .unwrap();
+
+        for y in (0..DISPLAY_HEIGHT as i32).step_by(3) {
+            Rectangle::new(Point::new(0, y), Size::new(DISPLAY_WIDTH, 1))
+                .into_styled(
+                    PrimitiveStyleBuilder::new()
+                        .fill_color(Rgb888::new(0, 0, 0))
+                        .build(),
+                )
+                .draw(display)
+                .unwrap();
+        }
     }
 }
 
@@ -228,7 +234,6 @@ fn save_screenshot(display: &SimulatorDisplay<Rgb888>, path: &str) {
 }
 
 fn main() {
-    // Check for --screenshot flag
     let args: Vec<String> = env::args().collect();
     let screenshot_path = args
         .iter()
@@ -240,9 +245,7 @@ fn main() {
     let mut display = SimulatorDisplay::<Rgb888>::new(Size::new(DISPLAY_WIDTH, DISPLAY_HEIGHT));
     let mut state = State::new();
 
-    // If screenshot mode, render one frame and exit
     if let Some(path) = screenshot_path {
-        // Simulate some button presses for visual interest
         state.press('5');
         std::thread::sleep(Duration::from_millis(100));
         state.press('2');
@@ -255,7 +258,6 @@ fn main() {
         return;
     }
 
-    // Interactive mode
     let mut window = Window::new("Thermal Pinpad", &out);
 
     loop {

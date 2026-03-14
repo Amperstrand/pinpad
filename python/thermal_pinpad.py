@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional, Tuple, Union
 import math
+import random
 import time
 
 
@@ -240,13 +241,13 @@ class ThermalColorMapper:
     # t is the intensity threshold, color is the RGB value at that point
     _PALETTES = {
         ThermalPalette.SPLINTER_CELL: [
-            (0.0,  [10, 10, 26]),    # Dark blue/black
-            (0.15, [26, 10, 46]),    # Purple/dark blue
-            (0.30, [26, 74, 94]),    # Cyan/teal
-            (0.50, [42, 138, 74]),   # Green
-            (0.70, [138, 170, 42]),  # Yellow-green
-            (0.85, [202, 202, 74]),  # Yellow
-            (1.0,  [234, 138, 42]),  # Orange
+            (0.0,  [5, 8, 32]),
+            (0.2,  [12, 42, 110]),
+            (0.4,  [20, 120, 170]),
+            (0.62, [82, 190, 132]),
+            (0.8,  [220, 218, 90]),
+            (0.92, [255, 235, 140]),
+            (1.0,  [255, 250, 220]),
         ],
         ThermalPalette.CLASSIC: [
             (0.0,  [0, 0, 40]),
@@ -374,6 +375,8 @@ if __name__ == "__main__":
     MARGIN_Y = 30
     BUTTONS_PER_ROW = 3
     TARGET_FPS = 60
+    NOISE_POINTS = 140
+    SCANLINE_SPACING = 3
     
     class ThermalPinpadDemo:
         """Tkinter demo application for the thermal pinpad."""
@@ -646,20 +649,46 @@ if __name__ == "__main__":
             # Draw all buttons
             for i, label in enumerate(ThermalKeypad.BUTTONS):
                 self._draw_button(i, label, intensities[label])
+
+            self._draw_noise()
+            self._draw_scanlines()
         
         def _draw_background(self):
             """Draw subtle background gradient."""
-            # Create radial gradient effect with concentric rectangles
+            self.canvas.create_rectangle(
+                0, 0, CANVAS_WIDTH, CANVAS_HEIGHT,
+                fill='#050f1e', outline=''
+            )
+
             cx, cy = CANVAS_WIDTH // 2, CANVAS_HEIGHT // 2
             for i in range(10, 0, -1):
                 ratio = i / 10
-                alpha = int(30 * ratio)
-                color = f'#{alpha:02x}{int(alpha*1.5):02x}{int(alpha*2.5):02x}'
+                alpha = int(22 * ratio)
+                color = f'#{alpha:02x}{int(alpha*2.0):02x}{int(alpha*4.0):02x}'
                 size = int(max(CANVAS_WIDTH, CANVAS_HEIGHT) * ratio)
                 self.canvas.create_oval(
                     cx - size, cy - size, cx + size, cy + size,
                     fill=color, outline=''
                 )
+
+            vignette = 60
+            self.canvas.create_rectangle(0, 0, vignette, CANVAS_HEIGHT, fill='#000000', stipple='gray50', outline='')
+            self.canvas.create_rectangle(CANVAS_WIDTH - vignette, 0, CANVAS_WIDTH, CANVAS_HEIGHT, fill='#000000', stipple='gray50', outline='')
+            self.canvas.create_rectangle(0, 0, CANVAS_WIDTH, vignette, fill='#000000', stipple='gray50', outline='')
+            self.canvas.create_rectangle(0, CANVAS_HEIGHT - vignette, CANVAS_WIDTH, CANVAS_HEIGHT, fill='#000000', stipple='gray50', outline='')
+
+        def _draw_noise(self):
+            import random
+            for _ in range(NOISE_POINTS):
+                x = random.randint(0, CANVAS_WIDTH - 1)
+                y = random.randint(0, CANVAS_HEIGHT - 1)
+                n = random.randint(10, 36)
+                c = f'#{n:02x}{min(255, n + 20):02x}{min(255, n + 45):02x}'
+                self.canvas.create_rectangle(x, y, x + 1, y + 1, fill=c, outline='')
+
+        def _draw_scanlines(self):
+            for y in range(0, CANVAS_HEIGHT, SCANLINE_SPACING):
+                self.canvas.create_line(0, y, CANVAS_WIDTH, y, fill='#000000', stipple='gray50')
         
         def _draw_button(self, index: int, label: str, intensity: float):
             """Draw a single button with thermal effect."""
@@ -682,35 +711,22 @@ if __name__ == "__main__":
         
         def _draw_thermal_glow(self, cx: int, cy: int, base_intensity: float):
             """Draw concentric circle thermal glow effect."""
-            max_radius = max(BUTTON_WIDTH, BUTTON_HEIGHT) * 0.8
-            
-            for ring in range(self.config.num_rings - 1, -1, -1):
-                ring_intensity = calculate_ring_intensity(
-                    base_intensity, ring, self.config.num_rings
-                )
-                
-                if ring_intensity < self.config.min_visible_intensity:
-                    continue
-                
-                radius = max_radius * ((ring + 1) / self.config.num_rings)
-                r, g, b = self.color_mapper.intensity_to_rgb(
-                    ring_intensity, self.current_palette
-                )
-                alpha = ring_intensity * 0.6
-                
-                # Create color with alpha approximation
-                # Blend with background (dark blue #050508)
-                bg_r, bg_g, bg_b = 5, 5, 8
+            max_radius = max(BUTTON_WIDTH, BUTTON_HEIGHT) * 1.1
+            layers = [
+                (max_radius, base_intensity * 0.26),
+                (max_radius * 0.7, base_intensity * 0.34),
+                (max_radius * 0.42, base_intensity * 0.42),
+            ]
+
+            for radius, value in layers:
+                r, g, b = self.color_mapper.intensity_to_rgb(value, self.current_palette)
+                bg_r, bg_g, bg_b = 5, 15, 30
+                alpha = min(0.6, value)
                 final_r = int(r * alpha + bg_r * (1 - alpha))
                 final_g = int(g * alpha + bg_g * (1 - alpha))
                 final_b = int(b * alpha + bg_b * (1 - alpha))
                 color = f'#{final_r:02x}{final_g:02x}{final_b:02x}'
-                
-                self.canvas.create_oval(
-                    cx - radius, cy - radius,
-                    cx + radius, cy + radius,
-                    fill=color, outline=''
-                )
+                self.canvas.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, fill=color, outline='')
         
         def _draw_button_background(self, x: int, y: int, intensity: float):
             """Draw button background."""
