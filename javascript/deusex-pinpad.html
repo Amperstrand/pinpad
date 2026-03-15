@@ -13,6 +13,8 @@
             --cyan: #00FFFF;
             --red: #FF0000;
             --panel-bg: #090900;
+            --boot-ms: 400ms;
+            --keypress-flash-ms: 100ms;
         }
 
         * {
@@ -64,6 +66,24 @@
             animation: scan 2.8s linear infinite;
         }
 
+        .frame::after {
+            content: "";
+            position: absolute;
+            inset: -40% 0;
+            pointer-events: none;
+            background: linear-gradient(
+                180deg,
+                rgba(255, 255, 255, 0) 0%,
+                rgba(255, 255, 255, 0.32) 45%,
+                rgba(255, 234, 33, 0.48) 50%,
+                rgba(255, 255, 255, 0.25) 55%,
+                rgba(255, 255, 255, 0) 100%
+            );
+            mix-blend-mode: screen;
+            opacity: 0;
+            transform: translateY(-45%);
+        }
+
         .hud {
             display: flex;
             justify-content: space-between;
@@ -90,8 +110,11 @@
                 linear-gradient(180deg, rgba(255, 234, 33, 0.1), rgba(255, 234, 33, 0.02)),
                 rgba(8, 8, 0, 0.82);
             box-shadow:
-                0 0 17px rgba(255, 234, 33, 0.3),
-                inset 0 0 16px rgba(255, 234, 33, 0.11);
+                0 0 24px rgba(255, 234, 33, 0.34),
+                0 0 48px rgba(229, 175, 46, 0.22),
+                inset 0 0 18px rgba(255, 234, 33, 0.16),
+                inset 0 0 2px rgba(255, 255, 255, 0.45);
+            transition: box-shadow 220ms ease, border-color 220ms ease;
         }
 
         .status {
@@ -139,10 +162,16 @@
                 0 0 2px rgba(255, 255, 255, 0.9);
             cursor: pointer;
             position: relative;
-            transition: transform 90ms ease, border-color 90ms ease;
+            transition:
+                transform 90ms ease,
+                border-color 130ms ease,
+                box-shadow 130ms ease,
+                background 160ms ease;
             box-shadow:
-                0 0 16px rgba(229, 175, 46, 0.28),
-                inset 0 0 11px rgba(255, 234, 33, 0.1);
+                0 0 19px rgba(229, 175, 46, 0.36),
+                0 0 35px rgba(255, 234, 33, 0.12),
+                inset 0 0 11px rgba(255, 234, 33, 0.12),
+                inset 0 0 1px rgba(255, 255, 255, 0.7);
         }
 
         .key::after {
@@ -171,12 +200,16 @@
         }
 
         .key.flash {
-            animation: keyflash 100ms ease-out;
+            animation: keyflash var(--keypress-flash-ms) ease-out;
         }
 
         .frame.booting .display,
         .frame.booting .keys {
-            animation: boot-glitch 400ms steps(5, end);
+            animation: boot-glitch var(--boot-ms) steps(5, end);
+        }
+
+        .frame.booting::after {
+            animation: boot-resolve var(--boot-ms) ease-out;
         }
 
         .status.ok {
@@ -204,6 +237,17 @@
             }
             100% {
                 border-color: rgba(229, 175, 46, 0.78);
+            }
+        }
+
+        @keyframes boot-resolve {
+            0% {
+                opacity: 0.95;
+                transform: translateY(-52%);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(58%);
             }
         }
 
@@ -255,15 +299,6 @@
     <script>
         (() => {
             "use strict";
-
-            const COLORS = {
-                background: "#131200",
-                primaryGold: "#FFEA21",
-                amber: "#E5AF2E",
-                darkGold: "#B49125",
-                cyan: "#00FFFF",
-                red: "#FF0000",
-            };
 
             const TIMING = {
                 bootMs: 400,
@@ -397,6 +432,8 @@
                 createButtons();
                 refreshMask();
                 window.addEventListener("keydown", onKeydown);
+                frame.style.setProperty("--boot-ms", `${TIMING.bootMs}ms`);
+                frame.style.setProperty("--keypress-flash-ms", `${TIMING.keypressFlashMs}ms`);
 
                 setStatus("Boot sequence... scanline sync");
                 window.setTimeout(() => {
@@ -408,8 +445,6 @@
             }
 
             boot();
-            window.DEUS_EX_COLORS = COLORS;
-            window.DEUS_EX_TIMING = TIMING;
         })();
     </script>
 </body>

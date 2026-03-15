@@ -18,8 +18,7 @@ Usage:
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Optional, List, Tuple
-import math
+from typing import Literal, Optional, Tuple
 import random
 import time
 
@@ -69,6 +68,11 @@ class SevastolinkConfig:
     error_flash_ms: int = 250
     success_flash_ms: int = 400
     verify_delay_ms: int = 800
+    scanline_spacing_px: int = 2
+    flicker_min_ms: int = 2000
+    flicker_max_ms: int = 4000
+    flicker_duration_ms: int = 100
+    auth_code: str = '1234'
 
 
 class AuthState(Enum):
@@ -262,9 +266,7 @@ if __name__ == "__main__":
     TARGET_FPS = 60
     
     # CRT effect parameters
-    SCANLINE_SPACING = 4
     NOISE_INTENSITY = 0.08
-    FLICKER_CHANCE = 0.003
     GRAIN_UPDATE_INTERVAL_MS = 100  # ~10fps for film grain
 
     class SevastolinkDemo:
@@ -285,7 +287,10 @@ if __name__ == "__main__":
             self.last_cursor_toggle = time.time() * 1000
             self.screen_flicker = False
             self.flicker_end_time = 0
-            self.next_flicker = time.time() * 1000 + random.randint(2000, 4000)
+            self.next_flicker = time.time() * 1000 + random.randint(
+                self.config.flicker_min_ms,
+                self.config.flicker_max_ms
+            )
             
             # Demo mode
             self.demo_mode = False
@@ -494,8 +499,7 @@ if __name__ == "__main__":
                 self._schedule_reset(self.config.error_flash_ms)
                 return
             
-            # For demo, accept "1234" or random success
-            success = self.keypad.code == '1234' or random.random() > 0.6
+            success = self.keypad.code == self.config.auth_code
             self.keypad.verify_complete(success)
             
             if success:
@@ -580,8 +584,11 @@ if __name__ == "__main__":
             # Update screen flicker
             if now_ms >= self.next_flicker:
                 self.screen_flicker = True
-                self.flicker_end_time = now_ms + 100
-                self.next_flicker = now_ms + random.randint(2000, 4000)
+                self.flicker_end_time = now_ms + self.config.flicker_duration_ms
+                self.next_flicker = now_ms + random.randint(
+                    self.config.flicker_min_ms,
+                    self.config.flicker_max_ms
+                )
             
             if self.screen_flicker and now_ms >= self.flicker_end_time:
                 self.screen_flicker = False
@@ -641,11 +648,13 @@ if __name__ == "__main__":
         def _draw_header(self):
             """Draw terminal header."""
             # Title
-            self.canvas.create_text(
+            self._draw_glow_text(
                 CANVAS_WIDTH // 2, 25,
                 text="SEEGSON SEVASTOLINK",
                 font=('Courier New', 12),
-                fill='#134213'
+                fill='#05b669',
+                glow='#05b669',
+                glow_offset=1
             )
             
             # Separator
@@ -688,12 +697,14 @@ if __name__ == "__main__":
             if self.cursor_visible and self.keypad.auth_state == AuthState.IDLE:
                 code_text += '\u2588'
             
-            self.canvas.create_text(
+            self._draw_glow_text(
                 35, display_y + 35,
                 text=code_text,
                 font=('Courier New', 18),
                 fill='#ccd5d4',
-                anchor='w'
+                anchor='w',
+                glow='#05b669',
+                glow_offset=1
             )
             
             # Auth state overlay
@@ -840,37 +851,48 @@ if __name__ == "__main__":
                 font=('Courier New', 9),
                 fill=color
             )
+
+        def _draw_glow_text(
+            self,
+            x: int,
+            y: int,
+            text: str,
+            font: Tuple[str, int],
+            fill: str,
+            anchor: Literal['nw', 'n', 'ne', 'w', 'center', 'e', 'sw', 's', 'se'] = 'center',
+            glow: str = '#05b669',
+            glow_offset: int = 1,
+        ):
+            for dx, dy in [(-glow_offset, 0), (glow_offset, 0), (0, -glow_offset), (0, glow_offset)]:
+                self.canvas.create_text(
+                    x + dx,
+                    y + dy,
+                    text=text,
+                    font=font,
+                    fill=glow,
+                    anchor=anchor
+                )
+            self.canvas.create_text(x, y, text=text, font=font, fill=fill, anchor=anchor)
         
         def _draw_crt_effects(self):
             """Draw CRT scan lines and vignette."""
             # Scan lines
-            for y in range(0, CANVAS_HEIGHT, SCANLINE_SPACING):
+            for y in range(0, CANVAS_HEIGHT, self.config.scanline_spacing_px):
                 self.canvas.create_line(
                     0, y, CANVAS_WIDTH, y,
                     fill='#000000', width=1, stipple='gray50'
                 )
-            
-            # Vignette effect (darker corners)
-            # Top-left corner
-            self.canvas.create_rectangle(
-                0, 0, 60, 60,
-                fill='#000000', stipple='gray50', outline=''
-            )
-            # Top-right corner
-            self.canvas.create_rectangle(
-                CANVAS_WIDTH - 60, 0, CANVAS_WIDTH, 60,
-                fill='#000000', stipple='gray50', outline=''
-            )
-            # Bottom-left corner
-            self.canvas.create_rectangle(
-                0, CANVAS_HEIGHT - 60, 60, CANVAS_HEIGHT,
-                fill='#000000', stipple='gray50', outline=''
-            )
-            # Bottom-right corner
-            self.canvas.create_rectangle(
-                CANVAS_WIDTH - 60, CANVAS_HEIGHT - 60, CANVAS_WIDTH, CANVAS_HEIGHT,
-                fill='#000000', stipple='gray50', outline=''
-            )
+
+            for inset, stipple in [(0, 'gray50'), (8, 'gray25'), (16, 'gray12')]:
+                self.canvas.create_rectangle(
+                    inset,
+                    inset,
+                    CANVAS_WIDTH - inset,
+                    CANVAS_HEIGHT - inset,
+                    outline='#000000',
+                    width=3,
+                    stipple=stipple
+                )
     
     # Run the demo
     root = tk.Tk()

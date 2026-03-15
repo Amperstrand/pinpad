@@ -82,9 +82,9 @@
             background: repeating-linear-gradient(
                 0deg,
                 transparent,
-                transparent 2px,
-                rgba(0, 0, 0, 0.25) 2px,
-                rgba(0, 0, 0, 0.25) 4px
+                transparent 1px,
+                rgba(0, 0, 0, 0.35) 1px,
+                rgba(0, 0, 0, 0.35) 2px
             );
             pointer-events: none;
             z-index: 10;
@@ -224,7 +224,7 @@
         // Pure Vanilla JavaScript Implementation
         // ===========================================
 
-        (function() {
+        (() => {
             'use strict';
 
             // ===========================================
@@ -269,10 +269,13 @@
                 // Animation timing (milliseconds)
                 CURSOR_BLINK: 530,
                 KEYPRESS_FLASH: 150,
+                VERIFY_DELAY: 800,
                 SCREEN_FLICKER_MIN: 2000,
                 SCREEN_FLICKER_MAX: 4000,
+                SCREEN_FLICKER_DURATION: 100,
                 ERROR_FLASH: 250,
                 SUCCESS_FLASH: 400,
+                AUTH_CODE: '1234',
 
                 // CRT effects
                 SCANLINE_INTENSITY: 0.25,
@@ -368,10 +371,6 @@
                     pressButton('C');
                 } else if (key === 'ENTER') {
                     pressButton('E');
-                } else if (key === '*') {
-                    pressButton('*');
-                } else if (key === '#') {
-                    pressButton('#');
                 }
             }
 
@@ -445,8 +444,7 @@
 
                 // Simulate verification delay
                 setTimeout(() => {
-                    // For demo, accept code "1234" or random success
-                    const success = state.code === '1234' || Math.random() > 0.6;
+                    const success = state.code === CONFIG.AUTH_CODE;
                     
                     if (success) {
                         state.authState = 'success';
@@ -464,7 +462,7 @@
                         state.code = '';
                         updateStatus('AWAITING INPUT');
                     }, success ? CONFIG.SUCCESS_FLASH : CONFIG.ERROR_FLASH);
-                }, 800);
+                }, CONFIG.VERIFY_DELAY);
             }
 
             function flashError() {
@@ -510,11 +508,9 @@
                 if (state.authState !== 'idle') return;
                 
                 const length = Math.floor(Math.random() * 4) + 4; // 4-7 digits
-                let code = '';
                 
                 for (let i = 0; i < length; i++) {
                     const digit = Math.floor(Math.random() * 10).toString();
-                    code += digit;
                     
                     setTimeout(() => {
                         if (state.authState === 'idle') {
@@ -543,7 +539,7 @@
             }
 
             function updateStatus(text) {
-                state.statusText.textContent = 'STATUS: ' + text;
+                state.statusText.textContent = `STATUS: ${text}`;
             }
 
             // ===========================================
@@ -592,7 +588,7 @@
                 }
 
                 // Clear flicker after duration
-                if (state.screenFlicker && now - state.flickerStartTime > 100) {
+                if (state.screenFlicker && now - state.flickerStartTime > CONFIG.SCREEN_FLICKER_DURATION) {
                     state.screenFlicker = false;
                 }
 
@@ -676,7 +672,10 @@
                 ctx.font = '12px "Courier New", monospace';
                 ctx.textAlign = 'center';
                 ctx.fillStyle = COLORS.TERMINAL_GREEN;
+                ctx.shadowColor = COLORS.SEEGSON_GREEN;
+                ctx.shadowBlur = 5;
                 ctx.fillText('SEEGSON SEVASTOLINK', CONFIG.CANVAS_WIDTH / 2, 25);
+                ctx.shadowBlur = 0;
 
                 // Separator line
                 ctx.strokeStyle = COLORS.TERMINAL_GREEN;
@@ -708,12 +707,17 @@
                 // Label
                 ctx.font = '10px "Courier New", monospace';
                 ctx.textAlign = 'left';
-                ctx.fillStyle = COLORS.SEGSON_GREEN;
+                ctx.fillStyle = COLORS.SEEGSON_GREEN;
+                ctx.shadowColor = COLORS.SEEGSON_GREEN;
+                ctx.shadowBlur = 4;
                 ctx.fillText('ACCESS CODE:', 35, displayY + 15);
+                ctx.shadowBlur = 0;
 
                 // Code display with cursor
                 ctx.font = '18px "Courier New", monospace';
                 ctx.fillStyle = COLORS.HYPERSLEEP_WHITE;
+                ctx.shadowColor = COLORS.SEEGSON_GREEN;
+                ctx.shadowBlur = 6;
                 
                 let displayText = state.code.split('').map(() => CONFIG.MASK_CHAR).join('');
                 
@@ -723,6 +727,7 @@
                 }
 
                 ctx.fillText(displayText, 35, displayY + 35);
+                ctx.shadowBlur = 0;
 
                 // Auth state overlay
                 if (state.authState === 'success') {
@@ -801,7 +806,7 @@
 
                 // Button glow when flashing
                 if (isFlashing && flashIntensity > 0.5) {
-                    ctx.shadowColor = COLORS.SEGSON_GREEN;
+                    ctx.shadowColor = COLORS.SEEGSON_GREEN;
                     ctx.shadowBlur = 15;
                     roundRect(ctx, pos.x, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
                     ctx.stroke();
@@ -831,7 +836,7 @@
                     ctx.globalAlpha = 1;
                 }
 
-                ctx.fillStyle = isFlashing ? COLORS.XENOMORPH_SKIN : COLORS.SEGSON_GREEN;
+                ctx.fillStyle = isFlashing ? COLORS.XENOMORPH_SKIN : COLORS.SEEGSON_GREEN;
 
                 if (isFlashing) {
                     ctx.shadowColor = COLORS.HYPERSLEEP_WHITE;
@@ -858,10 +863,10 @@
                 ctx.textAlign = 'center';
                 
                 if (state.authState === 'verifying') {
-                    ctx.fillStyle = COLORS.SEGSON_GREEN;
+                    ctx.fillStyle = COLORS.SEEGSON_GREEN;
                 } else if (state.authState === 'success') {
-                    ctx.fillStyle = COLORS.SEGSON_GREEN;
-                    ctx.shadowColor = COLORS.SEGSON_GREEN;
+                    ctx.fillStyle = COLORS.SEEGSON_GREEN;
+                    ctx.shadowColor = COLORS.SEEGSON_GREEN;
                     ctx.shadowBlur = 10;
                 } else if (state.authState === 'denied') {
                     ctx.fillStyle = COLORS.ACID_BLOOD;

@@ -13,6 +13,7 @@ pub struct TerminalConfig {
     pub cursor_blink_ms: u32,
     pub typing_delay_ms: u32,
     pub typing_variance_ms: u32,
+    pub button_active_ms: u32,
     pub grain_update_interval_ms: u32,
     pub chromatic_offset_px: u8,
 }
@@ -24,6 +25,7 @@ impl Default for TerminalConfig {
             cursor_blink_ms: 530,
             typing_delay_ms: 30,
             typing_variance_ms: 15,
+            button_active_ms: 150,
             grain_update_interval_ms: 100,
             chromatic_offset_px: 2,
         }
@@ -37,9 +39,38 @@ impl TerminalConfig {
             cursor_blink_ms: 530,
             typing_delay_ms: 30,
             typing_variance_ms: 15,
+            button_active_ms: 150,
             grain_update_interval_ms: 100,
             chromatic_offset_px: 2,
         }
+    }
+
+    #[inline]
+    pub const fn typing_delay_bounds(&self) -> (u32, u32) {
+        (
+            self.typing_delay_ms.saturating_sub(self.typing_variance_ms),
+            self.typing_delay_ms.saturating_add(self.typing_variance_ms),
+        )
+    }
+
+    #[inline]
+    pub const fn button_active_ms(mut self, button_active_ms: u32) -> Self {
+        self.button_active_ms = button_active_ms;
+        self
+    }
+
+    #[inline]
+    pub fn typing_delay_for(&self, entropy: u64) -> u32 {
+        let (min, max) = self.typing_delay_bounds();
+        let span = max.saturating_sub(min).saturating_add(1);
+        if span <= 1 {
+            return min;
+        }
+
+        let mixed = entropy
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        min.saturating_add((mixed as u32) % span)
     }
 
     #[inline]
@@ -123,8 +154,13 @@ impl TerminalButton {
 
     #[inline]
     pub fn is_pressed(&self, now_ms: u64) -> bool {
+        self.is_pressed_for(now_ms, 150)
+    }
+
+    #[inline]
+    pub fn is_pressed_for(&self, now_ms: u64, active_window_ms: u32) -> bool {
         match self.pressed_at {
-            Some(t) => now_ms.saturating_sub(t) < 150,
+            Some(t) => now_ms.saturating_sub(t) < active_window_ms as u64,
             None => false,
         }
     }
@@ -244,6 +280,23 @@ impl MrRobotKeypad {
     #[inline]
     pub fn entered_pin(&self) -> &[char] {
         &self.entered_pin[..self.pin_len]
+    }
+
+    #[inline]
+    pub const fn demo_pin_for_cycle(cycle: usize) -> &'static [char; 4] {
+        const PINS: [[char; 4]; 4] = [
+            ['1', '2', '3', '4'],
+            ['0', '0', '0', '0'],
+            ['9', '9', '9', '9'],
+            ['1', '3', '3', '7'],
+        ];
+        &PINS[cycle % PINS.len()]
+    }
+
+    #[inline]
+    pub fn demo_event_delay_ms(&self, event_index: usize, seed: u64) -> u32 {
+        self.config
+            .typing_delay_for(seed.wrapping_add(event_index as u64))
     }
 }
 
@@ -376,6 +429,7 @@ mod tests {
         assert_eq!(config.cursor_blink_ms, 530);
         assert_eq!(config.typing_delay_ms, 30);
         assert_eq!(config.typing_variance_ms, 15);
+        assert_eq!(config.button_active_ms, 150);
         assert_eq!(config.grain_update_interval_ms, 100);
         assert_eq!(config.chromatic_offset_px, 2);
     }
@@ -383,11 +437,51 @@ mod tests {
     #[test]
     fn test_config_builders_for_visual_effects() {
         let config = TerminalConfig::new()
+            .button_active_ms(180)
             .grain_update_interval_ms(120)
             .chromatic_offset_px(3);
 
+        assert_eq!(config.button_active_ms, 180);
         assert_eq!(config.grain_update_interval_ms, 120);
         assert_eq!(config.chromatic_offset_px, 3);
+    }
+
+    #[test]
+    fn test_typing_delay_stays_within_bounds() {
+        let config = TerminalConfig::new();
+        let (min, max) = config.typing_delay_bounds();
+
+        for i in 0..128 {
+            let delay = config.typing_delay_for(i);
+            assert!(delay >= min);
+            assert!(delay <= max);
+        }
+    }
+
+    #[test]
+    fn test_button_custom_active_window() {
+        let mut button = TerminalButton::new('7');
+        button.press(1_000);
+
+        assert!(button.is_pressed_for(1_160, 200));
+        assert!(!button.is_pressed_for(1_250, 200));
+    }
+
+    #[test]
+    fn test_demo_pin_rotation() {
+        assert_eq!(MrRobotKeypad::demo_pin_for_cycle(0), &['1', '2', '3', '4']);
+        assert_eq!(MrRobotKeypad::demo_pin_for_cycle(3), &['1', '3', '3', '7']);
+        assert_eq!(MrRobotKeypad::demo_pin_for_cycle(4), &['1', '2', '3', '4']);
+    }
+
+    #[test]
+    fn test_demo_event_delay_uses_typing_timing() {
+        let keypad = MrRobotKeypad::new();
+        let (min, max) = keypad.config().typing_delay_bounds();
+        let delay = keypad.demo_event_delay_ms(2, 42);
+
+        assert!(delay >= min);
+        assert!(delay <= max);
     }
 
     #[test]

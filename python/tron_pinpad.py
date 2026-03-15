@@ -155,8 +155,15 @@ if __name__ == "__main__":
     def draw_bloom(center: tuple[int, int], color: tuple[int, int, int], alpha: int, radius: int) -> None:
         surf = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
         pygame.draw.circle(surf, (*color, alpha), (radius, radius), radius)
-        pygame.draw.circle(surf, (*TronColors.NEON_WHITE, int(alpha * 0.48)), (radius, radius), int(radius * 0.45))
+        pygame.draw.circle(surf, (*color, int(alpha * 0.7)), (radius, radius), int(radius * 0.65))
+        pygame.draw.circle(surf, (*TronColors.NEON_WHITE, int(alpha * 0.55)), (radius, radius), int(radius * 0.4))
         screen.blit(surf, (center[0] - radius, center[1] - radius), special_flags=pygame.BLEND_PREMULTIPLIED)
+
+    def draw_scanlines(rect: pygame.Rect, flicker: float) -> None:
+        overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        for y in range(0, rect.height, 3):
+            pygame.draw.line(overlay, (*TronColors.NEON_WHITE, int(8 * flicker)), (0, y), (rect.width, y))
+        screen.blit(overlay, (rect.x, rect.y), special_flags=pygame.BLEND_ADD)
 
     running = True
     while running:
@@ -191,6 +198,10 @@ if __name__ == "__main__":
 
         pygame.draw.rect(screen, (2, 9, 11), DISPLAY_RECT)
         pygame.draw.rect(screen, TronColors.NEON_BLUE, DISPLAY_RECT, 1)
+        inner_glow = pygame.Surface((DISPLAY_RECT.width - 4, DISPLAY_RECT.height - 4), pygame.SRCALPHA)
+        pygame.draw.rect(inner_glow, (*TronColors.NEON_BLUE, int(25 * flicker)), inner_glow.get_rect())
+        screen.blit(inner_glow, (DISPLAY_RECT.x + 2, DISPLAY_RECT.y + 2), special_flags=pygame.BLEND_ADD)
+        draw_scanlines(DISPLAY_RECT, flicker)
 
         state_text = "AWAITING COMMAND"
         state_color = TronColors.GRID_CYAN
@@ -206,21 +217,30 @@ if __name__ == "__main__":
 
         status_surf = font_small.render(state_text, True, state_color)
         code_surf = font_code.render(keypad.masked_code, True, TronColors.NEON_WHITE)
+        code_glow = font_code.render(keypad.masked_code, True, TronColors.NEON_BLUE)
         hint_surf = font_small.render("0-9, C/BKSP clear, E/ENTER submit", True, TronColors.NEON_BLUE)
         screen.blit(status_surf, (DISPLAY_RECT.left + 10, DISPLAY_RECT.top + 12))
+        screen.blit(code_glow, (DISPLAY_RECT.left + 11, DISPLAY_RECT.top + 36), special_flags=pygame.BLEND_ADD)
         screen.blit(code_surf, (DISPLAY_RECT.left + 10, DISPLAY_RECT.top + 35))
         screen.blit(hint_surf, (DISPLAY_RECT.left + 10, DISPLAY_RECT.bottom + 10))
 
         trace_color = (*TronColors.NEON_BLUE, int(200 * flicker))
         trace = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        pygame.draw.line(trace, trace_color, (30, 186), (140, 186), 2)
-        pygame.draw.line(trace, trace_color, (140, 186), (168, 214), 2)
-        pygame.draw.line(trace, trace_color, (168, 214), (168, 244), 2)
-        pygame.draw.line(trace, trace_color, (168, 244), (386, 244), 2)
-        pygame.draw.line(trace, trace_color, (278, 244), (304, 218), 2)
-        pygame.draw.line(trace, trace_color, (304, 218), (304, 191), 2)
+        pulse_phase = (now_ms % 2200) / 2200
+        pulse_alpha = int(160 + 90 * (0.5 + 0.5 * (1 - abs(2 * pulse_phase - 1))))
+        trace_color_pulsed = (*TronColors.NEON_BLUE, int(pulse_alpha * flicker))
+        pygame.draw.line(trace, trace_color_pulsed, (30, 186), (140, 186), 2)
+        pygame.draw.line(trace, trace_color_pulsed, (140, 186), (168, 214), 2)
+        pygame.draw.line(trace, trace_color_pulsed, (168, 214), (168, 244), 2)
+        pygame.draw.line(trace, trace_color_pulsed, (168, 244), (386, 244), 2)
+        pygame.draw.line(trace, trace_color_pulsed, (278, 244), (304, 218), 2)
+        pygame.draw.line(trace, trace_color_pulsed, (304, 218), (304, 191), 2)
+        node_phase = (now_ms % 2200) / 1100
+        node_glow = 0.75 + 0.25 * (1 - abs(node_phase - 1))
         for node in ((140, 186), (168, 244), (304, 191)):
-            pygame.draw.rect(trace, (*TronColors.NEON_WHITE, int(210 * flicker)), pygame.Rect(node[0] - 3, node[1] - 3, 6, 6), 1)
+            node_alpha = int(210 * node_glow * flicker)
+            pygame.draw.rect(trace, (*TronColors.NEON_WHITE, node_alpha), pygame.Rect(node[0] - 3, node[1] - 3, 6, 6), 1)
+            pygame.draw.rect(trace, (*TronColors.NEON_BLUE, int(node_alpha * 0.5)), pygame.Rect(node[0] - 5, node[1] - 5, 10, 10), 1)
         screen.blit(trace, (0, 0))
 
         for label, rect in key_rects.items():
@@ -234,9 +254,10 @@ if __name__ == "__main__":
             pygame.draw.polygon(screen, (2, 13, 16), points)
             pygame.draw.polygon(screen, border_color, points, 1)
 
-            core_rect = rect.inflate(-44, -30)
+            core_rect = rect.inflate(-42, -28)
             core_points = polygon_for_bevel(core_rect, inset=6)
-            pygame.draw.polygon(screen, (*TronColors.NEON_WHITE, 120), core_points)
+            core_alpha = 155 if is_flash else 130
+            pygame.draw.polygon(screen, (*TronColors.NEON_WHITE, int(core_alpha * flicker)), core_points)
 
             label_surf = font_key.render(label, True, TronColors.NEON_WHITE)
             screen.blit(label_surf, label_surf.get_rect(center=rect.center))

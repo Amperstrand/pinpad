@@ -24,7 +24,8 @@ class DeadSpaceConfig:
     height: int = 560
     holo_opacity: int = 185
     scanline_alpha: int = 20
-    jitter_px: float = 2.0
+    jitter_min_px: int = 1
+    jitter_max_px: int = 2
     chromatic_offset: int = 2
     grid_rows: int = 4
     grid_cols: int = 4
@@ -50,6 +51,7 @@ class DeadSpaceRigDemo:
         self.stasis: int = 61
         self.mode_text: str = "STABLE LINK"
         self.mode_color: tuple[int, int, int] = COLORS["stasis_blue"]
+        self.unstable_frames: int = 0
         self.glyphs: list[str] = [
             "--", "PL", "SM", "TK",
             "ST", "NO", "MD", "AT",
@@ -103,21 +105,28 @@ class DeadSpaceRigDemo:
     def glitch_ping(self) -> None:
         self.mode_text = "HOLO DESYNC"
         self.mode_color = COLORS["alert_red"]
+        self.unstable_frames = 42
 
     def draw_frame(self) -> None:
         self.draw_background()
 
-        jitter_x = random.uniform(-self.config.jitter_px, self.config.jitter_px)
-        jitter_y = random.uniform(-self.config.jitter_px, self.config.jitter_px)
+        jitter_x, jitter_y = self.sample_jitter()
 
         holo = pygame.Surface((self.config.width - 120, self.config.height - 90), pygame.SRCALPHA)
         holo.fill((0, 71, 171, self.config.holo_opacity // 5))
 
+        self.draw_volumetric_light(holo)
         self.draw_holo_shell(holo)
         self.draw_status_panel(holo)
         self.draw_inventory_panel(holo)
         self.draw_scanlines(holo)
-        self.blit_chromatic(holo, (60, 45), int(jitter_x), int(jitter_y))
+        self.blit_chromatic(holo, (60, 45), jitter_x, jitter_y)
+
+        if self.unstable_frames > 0:
+            self.unstable_frames -= 1
+            if self.unstable_frames == 0:
+                self.mode_text = "STABLE LINK"
+                self.mode_color = COLORS["stasis_blue"]
 
     def draw_background(self) -> None:
         self.screen.fill((3, 7, 16))
@@ -138,6 +147,23 @@ class DeadSpaceRigDemo:
         mode = self.ui_font.render(self.mode_text, True, self.mode_color)
         surf.blit(mode, (w - 200, 14))
         pygame.draw.line(surf, (0, 255, 255, 70), (0, 44), (w, 44), 1)
+
+    def draw_volumetric_light(self, surf: Any) -> None:
+        w, h = surf.get_size()
+        beam = pygame.Surface((w, h), pygame.SRCALPHA)
+        top_color = (*COLORS["primary_cyan"], 34)
+        bottom_color = (*COLORS["deep_blue"], 0)
+        for y in range(h):
+            t = y / max(1, h - 1)
+            alpha = int(top_color[3] * (1.0 - t * 0.9))
+            color = (
+                int(top_color[0] * (1.0 - t) + bottom_color[0] * t),
+                int(top_color[1] * (1.0 - t) + bottom_color[1] * t),
+                int(top_color[2] * (1.0 - t) + bottom_color[2] * t),
+                max(0, alpha),
+            )
+            pygame.draw.line(beam, color, (int(w * 0.18), y), (int(w * 0.82), y), 1)
+        surf.blit(beam, (0, 0), special_flags=pygame.BLEND_ADD)
 
     def draw_status_panel(self, surf: Any) -> None:
         panel = pygame.Rect(18, 72, 350, 360)
@@ -200,6 +226,16 @@ class DeadSpaceRigDemo:
         for y in range(0, h, 4):
             pygame.draw.line(surf, (0, 0, 0, self.config.scanline_alpha), (0, y), (w, y), 1)
 
+    def sample_jitter(self) -> tuple[int, int]:
+        min_px = self.config.jitter_min_px
+        max_px = self.config.jitter_max_px
+        factor = 1.0 if self.unstable_frames > 0 else 0.85
+        mag_x = max(1, round(random.uniform(min_px, max_px) * factor))
+        mag_y = max(1, round(random.uniform(min_px, max_px) * factor))
+        jx = random.choice((-1, 1)) * mag_x
+        jy = random.choice((-1, 1)) * mag_y
+        return jx, jy
+
     def blit_chromatic(self, surf: Any, pos: tuple[int, int], jitter_x: int, jitter_y: int) -> None:
         x, y = pos
         off = self.config.chromatic_offset
@@ -214,6 +250,12 @@ class DeadSpaceRigDemo:
         self.screen.blit(red, (x - off + jitter_x, y + jitter_y), special_flags=pygame.BLEND_ADD)
         self.screen.blit(cyan, (x + jitter_x, y + jitter_y), special_flags=pygame.BLEND_ADD)
         self.screen.blit(blue, (x + off + jitter_x, y + jitter_y), special_flags=pygame.BLEND_ADD)
+
+        edge_glow = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        ew, eh = edge_glow.get_size()
+        pygame.draw.rect(edge_glow, (*COLORS["alert_red"], 16), (0, 0, ew, eh), width=2, border_radius=14)
+        pygame.draw.rect(edge_glow, (*COLORS["stasis_blue"], 24), (2, 2, ew - 4, eh - 4), width=2, border_radius=12)
+        self.screen.blit(edge_glow, (x + jitter_x, y + jitter_y), special_flags=pygame.BLEND_ADD)
 
         footer = self.small_font.render(
             f"SELECTED SLOT {self.selected + 1} / {self.glyphs[self.selected]}   |   ARROWS/WASD MOVE   ENTER INTERACT   SPACE GLITCH",

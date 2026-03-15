@@ -14,6 +14,15 @@
             --text-blue: #A0E6FF;
             --holo-opacity: 0.72;
             --scanline-dark: 0.08;
+            --jitter-x: 0px;
+            --jitter-y: 0px;
+            --aberr-r-x: -2px;
+            --aberr-r-y: 0px;
+            --aberr-c-x: 0px;
+            --aberr-c-y: 0px;
+            --aberr-b-x: 2px;
+            --aberr-b-y: 1px;
+            --volumetric-pulse: 0.55;
         }
 
         * {
@@ -47,6 +56,7 @@
             border-radius: 16px;
             overflow: hidden;
             position: relative;
+            transform: translate(var(--jitter-x), var(--jitter-y));
         }
 
         .rig-shell::before {
@@ -62,6 +72,20 @@
             );
             pointer-events: none;
             mix-blend-mode: multiply;
+        }
+
+        .rig-shell::after {
+            content: "";
+            position: absolute;
+            inset: -2px;
+            pointer-events: none;
+            border-radius: 16px;
+            box-shadow:
+                var(--aberr-r-x) var(--aberr-r-y) 0 rgba(255, 51, 0, 0.20),
+                var(--aberr-c-x) var(--aberr-c-y) 0 rgba(0, 255, 255, 0.24),
+                var(--aberr-b-x) var(--aberr-b-y) 0 rgba(51, 153, 255, 0.2),
+                0 0 calc(38px + 16px * var(--volumetric-pulse)) rgba(0, 255, 255, 0.2),
+                inset 0 0 calc(26px + 10px * var(--volumetric-pulse)) rgba(0, 71, 171, 0.28);
         }
 
         .header {
@@ -223,6 +247,13 @@
             const GRID_ROWS = 4;
             const GRID_COLS = 4;
             const SLOT_COUNT = GRID_ROWS * GRID_COLS;
+            const EFFECTS = {
+                holoOpacity: 0.72,
+                scanlineDark: 0.08,
+                chromaticOffsetPx: 2,
+                jitterMinPx: 1,
+                jitterMaxPx: 2
+            };
             const rigShell = document.getElementById("rigShell");
             const inventoryGrid = document.getElementById("inventoryGrid");
             const footerText = document.getElementById("footerText");
@@ -237,6 +268,10 @@
             let selectedIndex = 0;
             let health = 82;
             let stasis = 61;
+            let unstableFrames = 0;
+
+            document.documentElement.style.setProperty("--holo-opacity", `${EFFECTS.holoOpacity}`);
+            document.documentElement.style.setProperty("--scanline-dark", `${EFFECTS.scanlineDark}`);
 
             function initGrid() {
                 for (let i = 0; i < SLOT_COUNT; i += 1) {
@@ -279,7 +314,8 @@
             function glitchPing() {
                 modeLabel.textContent = "HOLO DESYNC";
                 modeLabel.style.color = COLORS.alertRed;
-                for (let i = 0; i < 10; i += 1) {
+                unstableFrames = 48;
+                for (let i = 0; i < 14; i += 1) {
                     setTimeout(applyJitter, i * 22);
                 }
             }
@@ -292,21 +328,27 @@
             }
 
             function applyChromaticAberration() {
-                const xShift = 1 + Math.random();
-                const yShift = 0.6 + Math.random() * 0.8;
-                rigShell.style.boxShadow = [
-                    `${xShift}px 0 0 rgba(255, 40, 20, 0.2)`,
-                    `${-xShift}px ${yShift}px 0 rgba(0, 255, 255, 0.25)`,
-                    `0 ${-yShift}px 0 rgba(51, 153, 255, 0.22)`,
-                    `0 0 40px rgba(0, 255, 255, 0.25)`,
-                    `inset 0 0 38px rgba(0, 255, 255, 0.08)`
-                ].join(", ");
+                const edge = EFFECTS.chromaticOffsetPx;
+                const drift = (Math.random() - 0.5) * 0.8;
+                rigShell.style.setProperty("--aberr-r-x", `${(-edge + drift).toFixed(2)}px`);
+                rigShell.style.setProperty("--aberr-r-y", `${(drift * 0.5).toFixed(2)}px`);
+                rigShell.style.setProperty("--aberr-c-x", `${(drift * 0.35).toFixed(2)}px`);
+                rigShell.style.setProperty("--aberr-c-y", `${(-drift * 0.3).toFixed(2)}px`);
+                rigShell.style.setProperty("--aberr-b-x", `${(edge + drift).toFixed(2)}px`);
+                rigShell.style.setProperty("--aberr-b-y", `${(1 - drift * 0.4).toFixed(2)}px`);
+            }
+
+            function randSigned(minMagnitude, maxMagnitude) {
+                const magnitude = minMagnitude + Math.random() * (maxMagnitude - minMagnitude);
+                return (Math.random() < 0.5 ? -1 : 1) * magnitude;
             }
 
             function applyJitter() {
-                const jx = (Math.random() - 0.5) * 4;
-                const jy = (Math.random() - 0.5) * 4;
-                rigShell.style.transform = `translate(${jx.toFixed(2)}px, ${jy.toFixed(2)}px)`;
+                const factor = unstableFrames > 0 ? 1.0 : 0.72;
+                const jx = randSigned(EFFECTS.jitterMinPx, EFFECTS.jitterMaxPx) * factor;
+                const jy = randSigned(EFFECTS.jitterMinPx, EFFECTS.jitterMaxPx) * factor;
+                rigShell.style.setProperty("--jitter-x", `${jx.toFixed(2)}px`);
+                rigShell.style.setProperty("--jitter-y", `${jy.toFixed(2)}px`);
             }
 
             function handleKeyDown(event) {
@@ -326,6 +368,15 @@
             function animate() {
                 applyJitter();
                 applyChromaticAberration();
+                const pulse = 0.35 + Math.random() * 0.65;
+                rigShell.style.setProperty("--volumetric-pulse", pulse.toFixed(3));
+                if (unstableFrames > 0) {
+                    unstableFrames -= 1;
+                    if (unstableFrames === 0) {
+                        modeLabel.textContent = "STABLE LINK";
+                        modeLabel.style.color = COLORS.stasisBlue;
+                    }
+                }
                 requestAnimationFrame(animate);
             }
 

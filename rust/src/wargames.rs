@@ -252,6 +252,7 @@ pub struct WargamesTerminal {
     pub cursor: CursorState,
     pub input: [u8; INPUT_CAPACITY],
     input_len: usize,
+    pub selected_game: Option<u8>,
     queued: [TypeQueueItem; 16],
     queued_len: usize,
     active: Option<TypeQueueItem>,
@@ -270,6 +271,7 @@ impl WargamesTerminal {
             cursor: CursorState::new(),
             input: [0; INPUT_CAPACITY],
             input_len: 0,
+            selected_game: None,
             queued: [TypeQueueItem::new(); 16],
             queued_len: 0,
             active: None,
@@ -414,6 +416,215 @@ impl WargamesTerminal {
         let span = max_ms - min_ms + 1;
         min_ms + (self.random_u32() % span)
     }
+
+    pub fn handle_command(&mut self) {
+        let input_len = self.input_len;
+        let input_str = core::str::from_utf8(&self.input[..input_len]).unwrap_or("");
+
+        let mut upper_buf: [u8; INPUT_CAPACITY] = [0; INPUT_CAPACITY];
+        let mut upper_len = 0;
+        for b in input_str.trim().bytes() {
+            if upper_len >= INPUT_CAPACITY {
+                break;
+            }
+            upper_buf[upper_len] = if b >= b'a' && b <= b'z' { b - 32 } else { b };
+            upper_len += 1;
+        }
+        self.clear_input();
+
+        let upper = core::str::from_utf8(&upper_buf[..upper_len]).unwrap_or("");
+        self.queue_command_echo(upper);
+
+        if upper.is_empty() {
+            let _ = self.queue_line("ENTER COMMAND. TRY HELP.", LineStyle::Dim);
+            return;
+        }
+
+        if upper == "HELP" || upper == "?" || upper == "MAN" {
+            self.queue_help();
+            return;
+        }
+
+        if upper == "LIST" || upper == "GAMES" {
+            self.queue_menu();
+            return;
+        }
+
+        if upper.starts_with("SELECT ") {
+            self.handle_select(&upper[7..]);
+            return;
+        }
+
+        if upper.starts_with("PLAY") {
+            let arg = if upper.len() > 4 {
+                &upper[4..].trim()
+            } else {
+                ""
+            };
+            self.handle_play(arg);
+            return;
+        }
+
+        if upper == "STATUS" {
+            self.handle_status();
+            return;
+        }
+
+        if upper == "CLEAR" || upper == "CLS" {
+            self.buffer.clear();
+            return;
+        }
+
+        self.queue_unknown_command(upper);
+    }
+
+    fn queue_command_echo(&mut self, command: &str) {
+        let mut buf: [u8; BUFFER_LINE_CAP] = [0; BUFFER_LINE_CAP];
+        let prefix = b"NORAD> ";
+        let prefix_len = prefix.len();
+        buf[..prefix_len].copy_from_slice(prefix);
+        let cmd_bytes = command.as_bytes();
+        let max_cmd = core::cmp::min(cmd_bytes.len(), BUFFER_LINE_CAP - prefix_len);
+        buf[prefix_len..prefix_len + max_cmd].copy_from_slice(&cmd_bytes[..max_cmd]);
+        if let Ok(s) = core::str::from_utf8(&buf[..prefix_len + max_cmd]) {
+            let _ = self.queue_line(s, LineStyle::Normal);
+        }
+    }
+
+    fn queue_unknown_command(&mut self, upper: &str) {
+        let mut buf: [u8; BUFFER_LINE_CAP] = [0; BUFFER_LINE_CAP];
+        let prefix = b"UNKNOWN COMMAND: ";
+        let prefix_len = prefix.len();
+        buf[..prefix_len].copy_from_slice(prefix);
+        let cmd_bytes = upper.as_bytes();
+        let max_cmd = core::cmp::min(cmd_bytes.len(), BUFFER_LINE_CAP - prefix_len);
+        buf[prefix_len..prefix_len + max_cmd].copy_from_slice(&cmd_bytes[..max_cmd]);
+        if let Ok(s) = core::str::from_utf8(&buf[..prefix_len + max_cmd]) {
+            let _ = self.queue_line(s, LineStyle::Dim);
+        }
+        let _ = self.queue_line("TYPE HELP FOR COMMAND INDEX.", LineStyle::Dim);
+    }
+
+    fn queue_help(&mut self) {
+        let _ = self.queue_line("AVAILABLE COMMANDS:", LineStyle::Dim);
+        let _ = self.queue_line("  LIST              SHOW GAMES LIST", LineStyle::Dim);
+        let _ = self.queue_line("  SELECT <1-4>      CHOOSE A GAME", LineStyle::Dim);
+        let _ = self.queue_line("  PLAY <NAME|#>     START SELECTED GAME", LineStyle::Dim);
+        let _ = self.queue_line("  STATUS            SHOW CURRENT TARGET", LineStyle::Dim);
+        let _ = self.queue_line("  CLEAR             CLEAR TERMINAL", LineStyle::Dim);
+        let _ = self.queue_line("  HELP              SHOW THIS MESSAGE", LineStyle::Dim);
+    }
+
+    fn handle_select(&mut self, token: &str) {
+        let selection = self.parse_selection(token.trim());
+        match selection {
+            Some(n) => {
+                self.selected_game = Some(n);
+                let prefix = "SELECTION ACCEPTED: ";
+                let mut buf: [u8; BUFFER_LINE_CAP] = [0; BUFFER_LINE_CAP];
+                let prefix_bytes = prefix.as_bytes();
+                let name_bytes = self.game_name(n).as_bytes();
+                let total = core::cmp::min(prefix_bytes.len() + name_bytes.len(), BUFFER_LINE_CAP);
+                buf[..prefix_bytes.len()].copy_from_slice(prefix_bytes);
+                let name_len = total - prefix_bytes.len();
+                buf[prefix_bytes.len()..total].copy_from_slice(&name_bytes[..name_len]);
+                if let Ok(s) = core::str::from_utf8(&buf[..total]) {
+                    let _ = self.queue_line(s, LineStyle::Highlight);
+                }
+                let _ = self.queue_line("TYPE PLAY TO EXECUTE.", LineStyle::Dim);
+            }
+            None => {
+                let _ = self.queue_line("INVALID SELECTION. CHOOSE 1-4.", LineStyle::Dim);
+            }
+        }
+    }
+
+    fn handle_play(&mut self, arg: &str) {
+        let selection = if arg.is_empty() {
+            self.selected_game
+        } else {
+            self.parse_selection(arg)
+        };
+
+        match selection {
+            Some(1) => {
+                let _ = self.queue_line(
+                    "SIMULATION BOOTSTRAP: GLOBAL THERMONUCLEAR WAR",
+                    LineStyle::Highlight,
+                );
+                let _ = self.queue_line("CONNECTING TO WOPR...", LineStyle::Highlight);
+                let _ = self.queue_line("GREETINGS PROFESSOR FALKEN.", LineStyle::Highlight);
+                let _ = self.queue_line("SHALL WE PLAY A GAME?", LineStyle::Highlight);
+            }
+            Some(n) => {
+                let name = self.game_name(n);
+                let mut buf: [u8; BUFFER_LINE_CAP] = [0; BUFFER_LINE_CAP];
+                let suffix = b" NOT INSTALLED ON THIS NODE.";
+                let name_bytes = name.as_bytes();
+                let total = core::cmp::min(name_bytes.len() + suffix.len(), BUFFER_LINE_CAP);
+                buf[..name_bytes.len()].copy_from_slice(name_bytes);
+                let suffix_len = total - name_bytes.len();
+                buf[name_bytes.len()..total].copy_from_slice(&suffix[..suffix_len]);
+                if let Ok(s) = core::str::from_utf8(&buf[..total]) {
+                    let _ = self.queue_line(s, LineStyle::Dim);
+                }
+                let _ = self.queue_line(
+                    "RECOMMENDED: GLOBAL THERMONUCLEAR WAR",
+                    LineStyle::Highlight,
+                );
+            }
+            None => {
+                let _ = self.queue_line("NO GAME SELECTED. USE SELECT <1-4>.", LineStyle::Dim);
+            }
+        }
+    }
+
+    fn handle_status(&mut self) {
+        match self.selected_game {
+            Some(n) => {
+                let prefix = "STATUS: READY / TARGET=";
+                let mut buf: [u8; BUFFER_LINE_CAP] = [0; BUFFER_LINE_CAP];
+                let prefix_bytes = prefix.as_bytes();
+                let name_bytes = self.game_name(n).as_bytes();
+                let total = core::cmp::min(prefix_bytes.len() + name_bytes.len(), BUFFER_LINE_CAP);
+                buf[..prefix_bytes.len()].copy_from_slice(prefix_bytes);
+                let name_len = total - prefix_bytes.len();
+                buf[prefix_bytes.len()..total].copy_from_slice(&name_bytes[..name_len]);
+                if let Ok(s) = core::str::from_utf8(&buf[..total]) {
+                    let _ = self.queue_line(s, LineStyle::Highlight);
+                }
+            }
+            None => {
+                let _ = self.queue_line("STATUS: IDLE / NO ACTIVE GAME", LineStyle::Dim);
+            }
+        }
+    }
+
+    fn parse_selection(&self, token: &str) -> Option<u8> {
+        if token == "1" || token.contains("GLOBAL") {
+            return Some(1);
+        }
+        if token == "2" || token.contains("POKER") {
+            return Some(2);
+        }
+        if token == "3" || token.contains("CHESS") {
+            return Some(3);
+        }
+        if token == "4" || token.contains("FIGHTER") {
+            return Some(4);
+        }
+        None
+    }
+
+    fn game_name(&self, n: u8) -> &'static str {
+        match n {
+            1 => "GLOBAL THERMONUCLEAR WAR",
+            2 => "POKER",
+            3 => "CHESS",
+            4 => "FIGHTER COMBAT",
+            _ => "UNKNOWN",
+        }
+    }
 }
 
 pub mod colors {
@@ -471,5 +682,24 @@ mod tests {
         assert_eq!(colors::DIM_GREEN, (16, 84, 14));
         assert_eq!(colors::BACKGROUND, (5, 26, 5));
         assert_eq!(colors::BLACK, (0, 0, 0));
+    }
+
+    #[test]
+    fn command_handling_works() {
+        let mut terminal = WargamesTerminal::new(WargamesConfig::new());
+        terminal.set_input("HELP");
+        terminal.handle_command();
+        for t in 0..5000 {
+            terminal.tick(t);
+        }
+        assert!(!terminal.buffer.is_empty());
+    }
+
+    #[test]
+    fn game_selection_persists() {
+        let mut terminal = WargamesTerminal::new(WargamesConfig::new());
+        terminal.set_input("SELECT 1");
+        terminal.handle_command();
+        assert_eq!(terminal.selected_game, Some(1));
     }
 }

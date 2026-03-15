@@ -43,6 +43,15 @@
                 inset 0 0 100px rgba(0, 0, 0, 0.65);
             position: relative;
             overflow: hidden;
+            transform: perspective(1000px) rotateX(0.3deg);
+        }
+
+        .crt-curve {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse 120% 120% at 50% 50%, transparent 0%, transparent 65%, rgba(0, 0, 0, 0.35) 100%);
+            z-index: 4;
         }
 
         .terminal::before {
@@ -59,6 +68,25 @@
             );
             animation: scan-drift 14s linear infinite;
             z-index: 3;
+        }
+
+        .phosphor-persist {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse at center, rgba(0, 170, 0, 0.03) 0%, transparent 70%);
+            filter: blur(1.5px);
+            z-index: 0;
+            animation: phosphor-glow 3.2s ease-in-out infinite alternate;
+        }
+
+        .flicker {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: transparent;
+            z-index: 5;
+            animation: screen-flicker 8.5s steps(1) infinite;
         }
 
         .terminal::after {
@@ -85,7 +113,11 @@
             letter-spacing: 0.06em;
             border-bottom: 1px solid rgba(16, 84, 14, 0.8);
             padding-bottom: 8px;
-            text-shadow: 0 0 2px var(--phosphor-green), 0 0 8px rgba(0, 170, 0, 0.35);
+            text-shadow:
+                0 0 1px var(--phosphor-green),
+                0 0 2px var(--phosphor-green),
+                0 0 8px rgba(0, 170, 0, 0.35),
+                0 0 14px rgba(0, 170, 0, 0.2);
         }
 
         .output {
@@ -97,9 +129,11 @@
             font-size: 19px;
             line-height: 1.26;
             text-shadow:
+                0 0 1px var(--phosphor-green),
                 0 0 2px var(--phosphor-green),
                 0 0 7px rgba(0, 170, 0, 0.45),
-                0 0 11px rgba(0, 170, 0, 0.25);
+                0 0 11px rgba(0, 170, 0, 0.25),
+                0 0 18px rgba(0, 170, 0, 0.15);
         }
 
         .line {
@@ -123,8 +157,10 @@
             padding-top: 8px;
             border-top: 1px solid rgba(16, 84, 14, 0.8);
             text-shadow:
+                0 0 1px var(--phosphor-green),
                 0 0 2px var(--phosphor-green),
-                0 0 8px rgba(0, 170, 0, 0.4);
+                0 0 8px rgba(0, 170, 0, 0.4),
+                0 0 14px rgba(0, 170, 0, 0.2);
             letter-spacing: 0.02em;
         }
 
@@ -145,12 +181,28 @@
             margin-left: 2px;
             background: var(--phosphor-green);
             vertical-align: text-bottom;
-            box-shadow: 0 0 10px rgba(0, 170, 0, 0.7);
+            box-shadow:
+                0 0 6px rgba(0, 170, 0, 0.8),
+                0 0 12px rgba(0, 170, 0, 0.5),
+                0 0 20px rgba(0, 170, 0, 0.3);
         }
 
         @keyframes scan-drift {
             from { transform: translateY(0); }
             to { transform: translateY(4px); }
+        }
+
+        @keyframes screen-flicker {
+            0%, 94%, 96%, 98%, 100% { opacity: 0; background: transparent; }
+            95% { opacity: 0.08; background: rgba(0, 255, 0, 0.15); }
+            97% { opacity: 0.04; background: rgba(0, 255, 0, 0.1); }
+            99% { opacity: 0.02; background: rgba(0, 255, 0, 0.05); }
+        }
+
+        @keyframes phosphor-glow {
+            0% { opacity: 0.6; filter: blur(1.5px); }
+            50% { opacity: 0.85; filter: blur(2px); }
+            100% { opacity: 0.7; filter: blur(1.5px); }
         }
 
         @media (max-width: 700px) {
@@ -168,6 +220,7 @@
 </head>
 <body>
     <main class="terminal" aria-label="WarGames NORAD terminal emulator">
+        <div class="phosphor-persist"></div>
         <section class="screen">
             <div class="header">NORAD STRATEGIC RESPONSE SYSTEM // IMSAI 8080 REMOTE NODE</div>
             <div id="output" class="output" aria-live="polite"></div>
@@ -176,6 +229,8 @@
                 <span id="promptInput" class="prompt-input"></span><span id="cursor" class="cursor" aria-hidden="true"></span>
             </div>
         </section>
+        <div class="crt-curve"></div>
+        <div class="flicker"></div>
     </main>
 
     <script>

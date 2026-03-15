@@ -112,6 +112,7 @@
 
         .lamp.active {
             opacity: 1;
+            animation: lampPulse 1.2s ease-in-out infinite;
         }
 
         .lamp.amber.active {
@@ -181,6 +182,16 @@
             transform: translateY(0);
             transition: transform 60ms linear, box-shadow 60ms linear;
             user-select: none;
+            touch-action: manipulation;
+        }
+
+        .key:active {
+            transform: translateY(4px);
+            box-shadow:
+                0 1px 0 #022944,
+                0 2px 4px rgba(0, 0, 0, 0.35),
+                inset 0 1px 3px rgba(255, 255, 255, 0.35),
+                inset 0 -1px 4px rgba(0, 0, 0, 0.55);
         }
 
         .key::before {
@@ -226,6 +237,16 @@
                 0 2px 4px rgba(0, 0, 0, 0.35),
                 inset 0 1px 3px rgba(255, 255, 255, 0.35),
                 inset 0 -1px 4px rgba(0, 0, 0, 0.55);
+        }
+
+        @keyframes lampPulse {
+            0%,
+            100% {
+                filter: saturate(0.95) brightness(0.95);
+            }
+            50% {
+                filter: saturate(1.1) brightness(1.2);
+            }
         }
 
         .footer {
@@ -282,16 +303,6 @@
 
     <script>
         (() => {
-            const COLORS = {
-                panelBackground: '#E8E6E1',
-                buttonBlue: '#005A9C',
-                buttonRed: '#B00000',
-                indicatorAmber: '#FFB000',
-                indicatorGreen: '#00FF41',
-                text: '#1A1A1A',
-                wear: '#3A3530'
-            };
-
             const KEY_LAYOUT = [
                 '1', '2', '3',
                 '4', '5', '6',
@@ -379,6 +390,7 @@
                     }
                     button.dataset.key = key;
                     button.textContent = key;
+                    button.setAttribute('aria-label', `Key ${key}`);
                     button.addEventListener('click', () => handleInput(key));
                     keypad.appendChild(button);
                 });
@@ -443,7 +455,6 @@
 
             demoBtn.addEventListener('click', toggleDemo);
             setStatus('Ready', false);
-            void COLORS;
         })();
     </script>
 </body>

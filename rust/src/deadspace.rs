@@ -11,7 +11,8 @@ pub mod colors {
 pub struct DeadSpaceConfig {
     pub hologram_opacity: f32,
     pub chromatic_offset_px: u8,
-    pub jitter_range_px: f32,
+    pub jitter_min_px: f32,
+    pub jitter_max_px: f32,
     pub scanline_darkness: f32,
     pub grid_rows: u8,
     pub grid_cols: u8,
@@ -30,7 +31,8 @@ impl DeadSpaceConfig {
         Self {
             hologram_opacity: 0.72,
             chromatic_offset_px: 2,
-            jitter_range_px: 2.0,
+            jitter_min_px: 1.0,
+            jitter_max_px: 2.0,
             scanline_darkness: 0.08,
             grid_rows: 4,
             grid_cols: 4,
@@ -50,8 +52,9 @@ impl DeadSpaceConfig {
     }
 
     #[inline]
-    pub const fn jitter_range_px(mut self, value: f32) -> Self {
-        self.jitter_range_px = value;
+    pub const fn jitter_range_px(mut self, min: f32, max: f32) -> Self {
+        self.jitter_min_px = min;
+        self.jitter_max_px = max;
         self
     }
 
@@ -96,10 +99,43 @@ impl DeadSpaceConfig {
             && self.scanline_darkness <= 0.10
             && self.chromatic_offset_px >= 1
             && self.chromatic_offset_px <= 2
-            && self.jitter_range_px >= 1.0
-            && self.jitter_range_px <= 2.0
+            && self.jitter_min_px >= 1.0
+            && self.jitter_min_px <= 2.0
+            && self.jitter_max_px >= self.jitter_min_px
+            && self.jitter_max_px <= 2.0
             && self.grid_rows > 0
             && self.grid_cols > 0
+    }
+
+    #[inline]
+    pub fn instability_offsets(&self, frame_index: u32, unstable: bool) -> (f32, f32) {
+        let min = self.jitter_min_px;
+        let max = self.jitter_max_px;
+        let span = (max - min).max(0.0);
+        let cycle = (frame_index % 8) as f32 / 7.0;
+        let magnitude = min + span * cycle;
+        let factor = if unstable { 1.0 } else { 0.8 };
+        let x = magnitude * factor * if (frame_index & 1) == 0 { 1.0 } else { -1.0 };
+        let y = magnitude
+            * factor
+            * if ((frame_index + 1) & 1) == 0 {
+                1.0
+            } else {
+                -1.0
+            };
+        (x, y)
+    }
+
+    #[inline]
+    pub const fn step_selection(&self, selected: u16, dx: i8, dy: i8) -> u16 {
+        let rows = self.grid_rows as i16;
+        let cols = self.grid_cols as i16;
+        let row = (selected / self.grid_cols as u16) as i16;
+        let col = (selected % self.grid_cols as u16) as i16;
+
+        let next_row = (row + dy as i16 + rows) % rows;
+        let next_col = (col + dx as i16 + cols) % cols;
+        (next_row * cols + next_col) as u16
     }
 }
 
@@ -121,7 +157,7 @@ mod tests {
         let cfg = DeadSpaceConfig::new()
             .hologram_opacity(0.75)
             .chromatic_offset_px(1)
-            .jitter_range_px(1.5)
+            .jitter_range_px(1.0, 1.5)
             .scanline_darkness(0.09)
             .grid_rows(3)
             .grid_cols(3);
@@ -129,5 +165,28 @@ mod tests {
         assert!(cfg.validate());
         assert_eq!(cfg.slot_count(), 9);
         assert_eq!(cfg.chromatic_offset_px, 1);
+    }
+
+    #[test]
+    fn selection_wraps_inventory_grid() {
+        let cfg = DeadSpaceConfig::new();
+        assert_eq!(cfg.step_selection(0, -1, 0), 3);
+        assert_eq!(cfg.step_selection(0, 0, -1), 12);
+        assert_eq!(cfg.step_selection(15, 1, 0), 12);
+        assert_eq!(cfg.step_selection(15, 0, 1), 3);
+    }
+
+    #[test]
+    fn stable_instability_jitter_stays_in_spec() {
+        let cfg = DeadSpaceConfig::new();
+        let (sx, sy) = cfg.instability_offsets(7, false);
+        assert!(sx.abs() >= 0.8);
+        assert!(sy.abs() >= 0.8);
+
+        let (ux, uy) = cfg.instability_offsets(7, true);
+        assert!(ux.abs() >= 1.0);
+        assert!(uy.abs() >= 1.0);
+        assert!(ux.abs() <= 2.0);
+        assert!(uy.abs() <= 2.0);
     }
 }

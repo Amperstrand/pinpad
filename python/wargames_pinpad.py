@@ -265,6 +265,28 @@ if __name__ == "__main__":
     for y in range(0, height, 4):
         pygame.draw.line(scanline_surface, (0, 0, 0, 72), (0, y), (width, y), 2)
 
+    curvature_edge_darkness = pygame.Surface((width, height), pygame.SRCALPHA)
+    for y in range(height):
+        for x in range(0, width, 8):
+            dx = (x - width / 2) / (width / 2)
+            dy = (y - height / 2) / (height / 2)
+            dist = (dx * dx + dy * dy) ** 0.5
+            alpha = int(min(180, dist * dist * 80))
+            pygame.draw.line(curvature_edge_darkness, (0, 0, 0, alpha), (x, y), (x + 8, y))
+
+    phosphor_glow_overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+    phosphor_glow_overlay.fill((0, 85, 0, 12))
+
+    screen_flicker_timer_ms = 0
+    screen_flicker_active = False
+    screen_flicker_interval_ms = 8500
+
+    def render_text_with_bloom(font, text, main_color, glow_base_color):
+        surf = font.render(text, True, main_color)
+        inner_glow = font.render(text, True, glow_base_color)
+        outer_glow = font.render(text, True, (0, 100, 0))
+        return surf, inner_glow, outer_glow
+
     def refresh_grain() -> None:
         grain_surface.fill((0, 0, 0, 0))
         for _ in range(1500):
@@ -296,10 +318,20 @@ if __name__ == "__main__":
             refresh_grain()
             last_grain_update = now_ms
 
+        screen_flicker_timer_ms += 16
+        if screen_flicker_timer_ms >= screen_flicker_interval_ms:
+            if screen_flicker_timer_ms - screen_flicker_interval_ms < 150:
+                screen_flicker_active = True
+            else:
+                screen_flicker_active = False
+                screen_flicker_timer_ms = 0
+
         screen.fill(COLORS["black"])
         frame_rect = pygame.Rect(16, 16, width - 32, height - 32)
         screen.fill(COLORS["background"], frame_rect)
         pygame.draw.rect(screen, COLORS["dim_green"], frame_rect, 1, border_radius=12)
+
+        screen.blit(phosphor_glow_overlay, (0, 0))
 
         center = (width // 2, height // 2)
         vignette = pygame.Surface((width, height), pygame.SRCALPHA)
@@ -309,10 +341,12 @@ if __name__ == "__main__":
         screen.blit(vignette, (0, 0))
 
         header = "NORAD STRATEGIC RESPONSE SYSTEM // IMSAI 8080 REMOTE NODE"
-        header_surf = header_font.render(header, True, COLORS["bright_green"])
-        header_glow = header_font.render(header, True, COLORS["phosphor_green"])
-        screen.blit(header_glow, (31, 30))
-        screen.blit(header_surf, (30, 29))
+        header_main, header_inner, header_outer = render_text_with_bloom(
+            header_font, header, COLORS["bright_green"], COLORS["phosphor_green"]
+        )
+        screen.blit(header_outer, (30, 31))
+        screen.blit(header_inner, (30, 30))
+        screen.blit(header_main, (30, 29))
         pygame.draw.line(screen, COLORS["dim_green"], (28, 52), (width - 28, 52), 1)
 
         output_top = 66
@@ -329,26 +363,46 @@ if __name__ == "__main__":
             else:
                 color = COLORS["phosphor_green"]
 
-            shadow = font.render(text, True, COLORS["phosphor_green"])
-            surf = font.render(text, True, color)
-            screen.blit(shadow, (31, y + 1))
-            screen.blit(surf, (30, y))
+            main_surf, inner_glow, outer_glow = render_text_with_bloom(
+                font, text, color, COLORS["phosphor_green"]
+            )
+            screen.blit(outer_glow, (31, y + 2))
+            screen.blit(inner_glow, (31, y + 1))
+            screen.blit(main_surf, (30, y))
             y += line_h
 
         prompt_label = "NORAD> "
         input_text = terminal.current_input
         prompt_line_y = height - 58
-        prompt_surf = font.render(prompt_label + input_text, True, COLORS["bright_green"])
-        prompt_shadow = font.render(prompt_label + input_text, True, COLORS["phosphor_green"])
-        screen.blit(prompt_shadow, (31, prompt_line_y + 1))
-        screen.blit(prompt_surf, (30, prompt_line_y))
+        prompt_main, prompt_inner, prompt_outer = render_text_with_bloom(
+            font, prompt_label + input_text, COLORS["bright_green"], COLORS["phosphor_green"]
+        )
+        screen.blit(prompt_outer, (31, prompt_line_y + 2))
+        screen.blit(prompt_inner, (31, prompt_line_y + 1))
+        screen.blit(prompt_main, (30, prompt_line_y))
 
         if terminal.cursor_visible:
             cursor_x = 30 + font.size(prompt_label + input_text)[0] + 2
+            for i in range(3):
+                alpha = 180 - i * 50
+                expand = i * 2
+                glow_rect = pygame.Rect(
+                    cursor_x - expand, prompt_line_y + 2 - expand,
+                    12 + expand * 2, font_size - 2 + expand * 2
+                )
+                glow_surf = pygame.Surface((glow_rect.width, glow_rect.height), pygame.SRCALPHA)
+                pygame.draw.rect(glow_surf, (*COLORS["phosphor_green"], alpha), glow_surf.get_rect())
+                screen.blit(glow_surf, glow_rect.topleft)
             pygame.draw.rect(screen, COLORS["phosphor_green"], (cursor_x, prompt_line_y + 2, 12, font_size - 2))
 
+        screen.blit(curvature_edge_darkness, (0, 0))
         screen.blit(grain_surface, (0, 0))
         screen.blit(scanline_surface, (0, 0))
+
+        if screen_flicker_active:
+            flicker_overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+            flicker_overlay.fill((0, 60, 0, 25))
+            screen.blit(flicker_overlay, (0, 0))
 
         pygame.display.flip()
         clock.tick(60)

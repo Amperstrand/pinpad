@@ -1,4 +1,5 @@
 use core::cmp::min;
+use micromath::F32Ext;
 
 pub const BUTTON_LABELS: [char; 12] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', 'E'];
 
@@ -7,6 +8,13 @@ pub const NEON_ORANGE: (u8, u8, u8) = (255, 157, 0);
 pub const NEON_WHITE: (u8, u8, u8) = (224, 247, 255);
 pub const DEEP_BLACK: (u8, u8, u8) = (3, 5, 4);
 pub const GRID_CYAN: (u8, u8, u8) = (0, 140, 163);
+
+pub const BLOOM_BASE_ALPHA: u8 = 105;
+pub const BLOOM_FLASH_ALPHA: u8 = 220;
+pub const CORE_BASE_ALPHA: u8 = 130;
+pub const CORE_FLASH_ALPHA: u8 = 250;
+pub const CIRCUIT_PULSE_PERIOD_MS: u64 = 2200;
+pub const NODE_GLOW_INTENSITY: f32 = 0.75;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TronConfig {
@@ -97,6 +105,8 @@ pub const CIRCUIT_TRACES: [CircuitTraceSegment; 6] = [
         width: 2,
     },
 ];
+
+pub const CIRCUIT_NODES: [(i16, i16); 3] = [(140, 186), (168, 244), (304, 191)];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TronFrame {
@@ -262,8 +272,8 @@ impl TronKeypad {
 
     pub fn render_frame(&self, now_ms: u64) -> TronFrame {
         let panel_opacity = flicker_opacity(now_ms);
-        let mut bloom = [96u8; 12];
-        let mut core = [118u8; 12];
+        let mut bloom = [BLOOM_BASE_ALPHA; 12];
+        let mut core = [CORE_BASE_ALPHA; 12];
 
         if let Some(button) = self.flash_button {
             if let Some(idx) = button_index(button) {
@@ -273,16 +283,20 @@ impl TronKeypad {
                 } else {
                     1.0 - (elapsed as f32 / self.config.key_flash_ms as f32)
                 };
-                bloom[idx] = (120.0 + intensity * 110.0) as u8;
-                core[idx] = (130.0 + intensity * 120.0) as u8;
+                bloom[idx] = (BLOOM_BASE_ALPHA as f32
+                    + intensity * (BLOOM_FLASH_ALPHA - BLOOM_BASE_ALPHA) as f32)
+                    as u8;
+                core[idx] = (CORE_BASE_ALPHA as f32
+                    + intensity * (CORE_FLASH_ALPHA - CORE_BASE_ALPHA) as f32)
+                    as u8;
             }
         }
 
         if self.auth_state == AuthState::Success {
             let mut i = 0;
             while i < 12 {
-                bloom[i] = bloom[i].saturating_add(20);
-                core[i] = core[i].saturating_add(10);
+                bloom[i] = bloom[i].saturating_add(25);
+                core[i] = core[i].saturating_add(15);
                 i += 1;
             }
         }
@@ -335,16 +349,26 @@ pub fn button_index(button: char) -> Option<usize> {
 }
 
 pub fn flicker_opacity(now_ms: u64) -> u8 {
-    let period = 120u64;
-    let phase = now_ms % period;
-    let step = if phase < period / 2 {
-        phase as i16
-    } else {
-        (period - phase) as i16
-    };
-    let base = 230i16;
-    let variance = (step * 25) / (period as i16 / 2);
-    (base + variance) as u8
+    let period1 = 110u64;
+    let period2 = 170u64;
+    let phase1 = (now_ms % period1) as f32 / period1 as f32;
+    let phase2 = (now_ms % period2) as f32 / period2 as f32;
+    let wave1 = F32Ext::sin(phase1 * core::f32::consts::TAU) * 0.04;
+    let wave2 = F32Ext::sin(phase2 * core::f32::consts::TAU) * 0.03;
+    let combined: f32 = 0.94 + wave1 + wave2;
+    (combined.clamp(0.9, 1.0) * 255.0) as u8
+}
+
+pub fn circuit_pulse_alpha(now_ms: u64) -> u8 {
+    let phase = (now_ms % CIRCUIT_PULSE_PERIOD_MS) as f32 / CIRCUIT_PULSE_PERIOD_MS as f32;
+    let triangle = 1.0 - (2.0 * phase - 1.0).abs();
+    let alpha = 160.0 + 90.0 * triangle;
+    alpha as u8
+}
+
+pub fn node_glow_factor(now_ms: u64) -> f32 {
+    let phase = (now_ms % 1100) as f32 / 1100.0;
+    NODE_GLOW_INTENSITY + 0.25 * (1.0 - (phase - 1.0).abs())
 }
 
 #[cfg(test)]
@@ -365,6 +389,18 @@ mod tests {
         assert!((230..=255).contains(&a));
         assert!((230..=255).contains(&b));
         assert!((230..=255).contains(&c));
+    }
+
+    #[test]
+    fn test_circuit_pulse_alpha() {
+        let alpha = circuit_pulse_alpha(0);
+        assert!((160..=250).contains(&alpha));
+    }
+
+    #[test]
+    fn test_node_glow_factor() {
+        let factor = node_glow_factor(0);
+        assert!((0.75..=1.0).contains(&factor));
     }
 
     #[test]

@@ -5,6 +5,8 @@
 
 use core::ops::{Index, IndexMut};
 
+pub const THERMAL_DECAY_TIME_MS: u32 = 30_000;
+
 /// Standard keypad button labels in order.
 pub const BUTTON_LABELS: [char; 12] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
 
@@ -35,7 +37,7 @@ impl Default for ThermalConfig {
     #[inline]
     fn default() -> Self {
         Self {
-            decay_time_ms: 30000,
+            decay_time_ms: THERMAL_DECAY_TIME_MS,
             min_visible_intensity: 0.02,
             num_rings: 10,
         }
@@ -47,7 +49,7 @@ impl ThermalConfig {
     #[inline]
     pub const fn new() -> Self {
         Self {
-            decay_time_ms: 30000,
+            decay_time_ms: THERMAL_DECAY_TIME_MS,
             min_visible_intensity: 0.02,
             num_rings: 10,
         }
@@ -133,11 +135,15 @@ impl ThermalButton {
             return 0.0;
         }
 
-        let elapsed = (now_ms - pressed_at) as f32;
+        let elapsed_ms = now_ms - pressed_at;
+        if elapsed_ms >= config.decay_time_ms as u64 {
+            return 0.0;
+        }
+
+        let elapsed = elapsed_ms as f32;
         let decay_progress = elapsed / config.decay_time_ms as f32;
 
-        // Exponential decay: intensity = e^(-decay_progress * 3)
-        let intensity = exp_neg_x_times_3(decay_progress);
+        let intensity = exp_neg_approx(decay_progress * 3.0);
 
         intensity.clamp(0.0, 1.0)
     }
@@ -155,28 +161,40 @@ impl ThermalButton {
     }
 }
 
-/// Calculate e^(-x * 3) using Taylor series approximation.
-///
-/// This is a no_std compatible implementation that doesn't require
-/// the full `libm` crate. For most thermal use cases, this precision
-/// is sufficient.
 #[inline]
-fn exp_neg_x_times_3(x: f32) -> f32 {
-    // e^(-3x) = 1 - 3x + (3x)^2/2 - (3x)^3/6 + (3x)^4/24 - ...
-    // For x >= 1.0, the value is very close to 0
-    if x >= 1.0 {
-        let x3 = x * 3.0;
-        // Use more terms for better accuracy
-        let x3_2 = x3 * x3;
-        let x3_3 = x3_2 * x3;
-        let x3_4 = x3_3 * x3;
-        let x3_5 = x3_4 * x3;
+fn exp_neg_approx(x: f32) -> f32 {
+    if x <= 0.0 {
+        return 1.0;
+    }
 
-        1.0 - x3 + x3_2 * 0.5 - x3_3 * 0.16666667 + x3_4 * 0.041666667 - x3_5 * 0.0083333333
-    } else {
-        // For small x, use a simpler approximation
-        let x3 = x * 3.0;
-        (1.0 - x3 * 0.5).max(0.0)
+    let n = 16.0;
+    let base = (1.0 - x / n).max(0.0);
+    let mut result = base;
+    for _ in 0..4 {
+        result *= result;
+    }
+
+    result
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ThermalKeyInput {
+    Press(char),
+    Clear,
+    Enter,
+    Ignored,
+}
+
+#[inline]
+pub fn map_key_input(key: char) -> ThermalKeyInput {
+    if key.is_ascii_digit() || key == '*' || key == '#' {
+        return ThermalKeyInput::Press(key);
+    }
+
+    match key {
+        'c' | 'C' => ThermalKeyInput::Clear,
+        'e' | 'E' => ThermalKeyInput::Enter,
+        _ => ThermalKeyInput::Ignored,
     }
 }
 
@@ -339,6 +357,22 @@ impl ThermalKeypad {
             self.press(ch, timestamp);
         }
     }
+
+    pub fn handle_key_input(&mut self, key: char, timestamp_ms: u64) -> ThermalKeyInput {
+        let input = map_key_input(key);
+        match input {
+            ThermalKeyInput::Press(label) => {
+                self.press(label, timestamp_ms);
+                ThermalKeyInput::Press(label)
+            }
+            ThermalKeyInput::Clear => {
+                self.reset();
+                ThermalKeyInput::Clear
+            }
+            ThermalKeyInput::Enter => ThermalKeyInput::Enter,
+            ThermalKeyInput::Ignored => ThermalKeyInput::Ignored,
+        }
+    }
 }
 
 impl Index<usize> for ThermalKeypad {
@@ -367,6 +401,9 @@ impl IndexMut<usize> for ThermalKeypad {
 /// * `total_rings` - Total number of rings
 #[inline]
 pub fn ring_intensity(base_intensity: f32, ring_index: u8, total_rings: u8) -> f32 {
+    if total_rings == 0 {
+        return 0.0;
+    }
     let falloff = 1.0 - (ring_index as f32 / total_rings as f32);
     base_intensity * falloff * falloff
 }
@@ -499,5 +536,34 @@ mod tests {
         assert_eq!(keypad[1].pressed_at(), Some(1100));
         assert_eq!(keypad[2].pressed_at(), Some(1200));
         assert_eq!(keypad[3].pressed_at(), Some(1300));
+    }
+
+    #[test]
+    fn test_decay_zero_at_full_decay_time() {
+        let mut button = ThermalButton::new('9');
+        button.press(1000);
+
+        assert_eq!(button.intensity(31000, &TEST_CONFIG), 0.0);
+        assert_eq!(button.intensity(40000, &TEST_CONFIG), 0.0);
+    }
+
+    #[test]
+    fn test_keyboard_mapping() {
+        assert_eq!(map_key_input('7'), ThermalKeyInput::Press('7'));
+        assert_eq!(map_key_input('C'), ThermalKeyInput::Clear);
+        assert_eq!(map_key_input('e'), ThermalKeyInput::Enter);
+        assert_eq!(map_key_input('x'), ThermalKeyInput::Ignored);
+    }
+
+    #[test]
+    fn test_handle_key_input() {
+        let mut keypad = ThermalKeypad::new();
+        let handled = keypad.handle_key_input('1', 5000);
+        assert_eq!(handled, ThermalKeyInput::Press('1'));
+        assert_eq!(keypad[0].pressed_at(), Some(5000));
+
+        let handled = keypad.handle_key_input('c', 6000);
+        assert_eq!(handled, ThermalKeyInput::Clear);
+        assert!(keypad[0].pressed_at().is_none());
     }
 }

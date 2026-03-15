@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Final
+import math
 import time
 
 
@@ -17,6 +18,7 @@ class DeusExColors:
 class DeusExConfig:
     boot_ms: int = 400
     keypress_flash_ms: int = 100
+    scanline_cycle_ms: int = 2800
     verify_ms: int = 800
     success_flash_ms: int = 400
     error_flash_ms: int = 250
@@ -29,6 +31,13 @@ class AuthState(Enum):
     VERIFYING = auto()
     SUCCESS = auto()
     ERROR = auto()
+
+
+@dataclass(frozen=True)
+class KeyVisualPulse:
+    label: str
+    outer_bloom: float
+    inner_core: float
 
 
 class DeusExKeypad:
@@ -51,7 +60,12 @@ class DeusExKeypad:
         if now_ms is None:
             now_ms = time.time() * 1000
         elapsed = now_ms - self._state_started_ms
-        return max(0.0, min(1.0, elapsed / self.config.boot_ms))
+        progress = elapsed / self.config.boot_ms
+        if progress < 0.0:
+            return 0.0
+        if progress > 1.0:
+            return 1.0
+        return progress
 
     def _set_state(self, state: AuthState) -> None:
         self.state = state
@@ -122,120 +136,39 @@ class DeusExKeypad:
 
         return (self._flashing_button, 1.0 - (elapsed / self.config.keypress_flash_ms))
 
+    def key_visual_pulse(self, now_ms: float | None = None) -> KeyVisualPulse | None:
+        label, intensity = self.flashing_button_intensity(now_ms)
+        if label is None:
+            return None
+        outer_bloom = 0.5 + (0.9 * intensity)
+        inner_core = 0.6 + (0.4 * intensity)
+        return KeyVisualPulse(label=label, outer_bloom=outer_bloom, inner_core=inner_core)
+
+    def boot_glitch_intensity(self, now_ms: float | None = None) -> float:
+        if self.state != AuthState.BOOTING:
+            return 0.0
+        progress = self.get_boot_progress(now_ms)
+        value = math.pow(1.0 - progress, 0.65)
+        if value < 0.0:
+            return 0.0
+        if value > 1.0:
+            return 1.0
+        return value
+
+    def scanline_offset(self, now_ms: float | None = None) -> float:
+        if now_ms is None:
+            now_ms = time.time() * 1000
+        cycle = max(1, self.config.scanline_cycle_ms)
+        return ((now_ms % cycle) / cycle)
+
+    def panel_glow_profile(self, now_ms: float | None = None) -> tuple[float, float]:
+        glitch = self.boot_glitch_intensity(now_ms)
+        if self.state == AuthState.SUCCESS:
+            return (0.5, 0.45)
+        if self.state == AuthState.ERROR:
+            return (0.42, 0.2)
+        return (0.28 + glitch * 0.42, 0.22 + glitch * 0.3)
+
 
 if __name__ == "__main__":
-    demo_namespace: dict[str, object] = {
-        "DeusExKeypad": DeusExKeypad,
-        "AuthState": AuthState,
-        "DeusExColors": DeusExColors,
-        "time": time,
-    }
-    exec(
-        """
-import pygame
-
-pygame.init()
-pygame.display.set_caption("Deus Ex: Human Revolution Keypad")
-
-WIDTH, HEIGHT = 420, 560
-GRID_TOP = 170
-BTN_W, BTN_H, GAP = 110, 76, 12
-FPS = 60
-
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-clock = pygame.time.Clock()
-
-font_title = pygame.font.SysFont("consolas", 18, bold=True)
-font_small = pygame.font.SysFont("consolas", 14)
-font_code = pygame.font.SysFont("consolas", 40, bold=True)
-font_key = pygame.font.SysFont("consolas", 34, bold=True)
-
-keypad = DeusExKeypad()
-button_rects = {}
-for idx, label in enumerate(DeusExKeypad.BUTTONS):
-    row = idx // 3
-    col = idx % 3
-    x = 34 + col * (BTN_W + GAP)
-    y = GRID_TOP + row * (BTN_H + GAP)
-    button_rects[label] = pygame.Rect(x, y, BTN_W, BTN_H)
-
-running = True
-while running:
-    now_ms = time.time() * 1000
-    keypad.update(now_ms)
-    flash_label, flash_intensity = keypad.flashing_button_intensity(now_ms)
-
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            for label, rect in button_rects.items():
-                if rect.collidepoint(event.pos):
-                    keypad.press(label)
-                    break
-        elif event.type == pygame.KEYDOWN:
-            if pygame.K_0 <= event.key <= pygame.K_9:
-                keypad.press(chr(event.key))
-            elif event.key in (pygame.K_BACKSPACE, pygame.K_c):
-                keypad.press("C")
-            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_e):
-                keypad.press("E")
-
-    screen.fill(DeusExColors.BACKGROUND)
-    header = font_title.render("SARIF SECURITY PANEL", True, DeusExColors.AMBER)
-    io = font_small.render("I/O PORT", True, DeusExColors.CYAN)
-    screen.blit(header, (30, 24))
-    screen.blit(io, (WIDTH - io.get_width() - 30, 28))
-
-    pygame.draw.rect(screen, (10, 10, 0), pygame.Rect(26, 50, WIDTH - 52, 120), border_radius=10)
-    pygame.draw.rect(screen, DeusExColors.AMBER, pygame.Rect(26, 50, WIDTH - 52, 120), 2, border_radius=10)
-
-    state_text = "AWAITING PASSCODE"
-    state_color = DeusExColors.DARK_GOLD
-    if keypad.state == AuthState.BOOTING:
-        state_text = "BOOT SEQUENCE..."
-    elif keypad.state == AuthState.VERIFYING:
-        state_text = "VERIFYING..."
-        state_color = DeusExColors.AMBER
-    elif keypad.state == AuthState.SUCCESS:
-        state_text = "ACCESS GRANTED"
-        state_color = (156, 255, 156)
-    elif keypad.state == AuthState.ERROR:
-        state_text = "ACCESS DENIED"
-        state_color = DeusExColors.RED
-
-    status_surface = font_small.render(state_text, True, state_color)
-    code_surface = font_code.render(keypad.masked_code, True, (255, 248, 210))
-    screen.blit(status_surface, (40, 68))
-    screen.blit(code_surface, (40, 92))
-
-    for label, rect in button_rects.items():
-        border = DeusExColors.AMBER
-        glow = 0.25
-        if flash_label == label:
-            border = (255, 255, 255)
-            glow = 0.4 + 0.6 * flash_intensity
-        pygame.draw.rect(screen, (16, 15, 0), rect, border_radius=10)
-        pygame.draw.rect(screen, border, rect, 2, border_radius=10)
-        center = rect.center
-        radius = int(max(rect.width, rect.height) * 0.9)
-        glow_surf = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-        pygame.draw.circle(glow_surf, (*DeusExColors.AMBER, int(100 * glow)), (radius, radius), radius)
-        pygame.draw.circle(glow_surf, (255, 255, 255, int(120 * glow)), (radius, radius), int(radius * 0.45))
-        screen.blit(glow_surf, (center[0] - radius, center[1] - radius), special_flags=pygame.BLEND_PREMULTIPLIED)
-        text = font_key.render(label, True, (255, 246, 191))
-        screen.blit(text, text.get_rect(center=rect.center))
-
-    for y in range(0, HEIGHT, 4):
-        pygame.draw.line(screen, (0, 0, 0), (0, y), (WIDTH, y), 1)
-
-    footer = font_small.render("Keys: 0-9, C/Backspace clear, E/Enter submit", True, DeusExColors.DARK_GOLD)
-    screen.blit(footer, (24, HEIGHT - 28))
-    pygame.display.flip()
-    clock.tick(FPS)
-
-pygame.quit()
-""",
-        demo_namespace,
-        demo_namespace,
-    )
+    raise SystemExit("Use this module from a renderer/integration layer.")

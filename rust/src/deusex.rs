@@ -1,4 +1,5 @@
 use core::cmp::min;
+use micromath::F32Ext;
 
 pub const BUTTON_LABELS: [char; 12] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', 'E'];
 
@@ -8,6 +9,12 @@ pub const AMBER: (u8, u8, u8) = (229, 175, 46);
 pub const DARK_GOLD: (u8, u8, u8) = (180, 145, 37);
 pub const CYAN: (u8, u8, u8) = (0, 255, 255);
 pub const ALERT_RED: (u8, u8, u8) = (255, 0, 0);
+pub const BOOT_MS: u32 = 400;
+pub const KEYPRESS_FLASH_MS: u32 = 100;
+pub const SCANLINE_CYCLE_MS: u32 = 2800;
+pub const VERIFY_MS: u32 = 800;
+pub const SUCCESS_FLASH_MS: u32 = 400;
+pub const ERROR_FLASH_MS: u32 = 250;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DeusExConfig {
@@ -28,12 +35,12 @@ impl Default for DeusExConfig {
 impl DeusExConfig {
     pub const fn new() -> Self {
         Self {
-            boot_ms: 400,
-            keypress_flash_ms: 100,
-            verify_ms: 800,
-            success_flash_ms: 400,
-            error_flash_ms: 250,
-            max_code_length: 8,
+            boot_ms: BOOT_MS,
+            keypress_flash_ms: KEYPRESS_FLASH_MS,
+            verify_ms: VERIFY_MS,
+            success_flash_ms: SUCCESS_FLASH_MS,
+            error_flash_ms: ERROR_FLASH_MS,
+            max_code_length: 4,
         }
     }
 
@@ -65,6 +72,13 @@ pub enum PressResult {
     Accepted,
     Cleared,
     Submitted,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct KeyVisualPulse {
+    pub button: char,
+    pub outer_bloom: f32,
+    pub inner_core: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -225,6 +239,37 @@ impl DeusExKeypad {
         None
     }
 
+    pub fn key_visual_pulse(&self, now_ms: u64) -> Option<KeyVisualPulse> {
+        let (button, intensity) = self.keypress_flash_intensity(now_ms)?;
+        Some(KeyVisualPulse {
+            button,
+            outer_bloom: 0.5 + (0.9 * intensity),
+            inner_core: 0.6 + (0.4 * intensity),
+        })
+    }
+
+    pub fn boot_glitch_intensity(&self, now_ms: u64) -> f32 {
+        if self.auth_state != AuthState::Booting {
+            return 0.0;
+        }
+        let progress = self.boot_progress(now_ms);
+        F32Ext::powf(1.0 - progress, 0.65).clamp(0.0, 1.0)
+    }
+
+    pub fn scanline_phase(&self, now_ms: u64) -> f32 {
+        let cycle = u64::from(SCANLINE_CYCLE_MS.max(1));
+        ((now_ms % cycle) as f32 / cycle as f32).clamp(0.0, 1.0)
+    }
+
+    pub fn panel_glow_profile(&self, now_ms: u64) -> (f32, f32) {
+        let glitch = self.boot_glitch_intensity(now_ms);
+        match self.auth_state {
+            AuthState::Success => (0.5, 0.45),
+            AuthState::Error => (0.42, 0.2),
+            _ => (0.28 + glitch * 0.42, 0.22 + glitch * 0.3),
+        }
+    }
+
     pub fn update(&mut self, now_ms: u64) {
         if self.auth_state == AuthState::Booting {
             if now_ms.saturating_sub(self.state_started_at) >= self.config.boot_ms as u64 {
@@ -311,11 +356,12 @@ mod tests {
     #[test]
     fn test_default_timing_matches_spec() {
         let c = DeusExConfig::new();
-        assert_eq!(c.boot_ms, 400);
-        assert_eq!(c.keypress_flash_ms, 100);
-        assert_eq!(c.verify_ms, 800);
-        assert_eq!(c.success_flash_ms, 400);
-        assert_eq!(c.error_flash_ms, 250);
+        assert_eq!(c.boot_ms, BOOT_MS);
+        assert_eq!(c.keypress_flash_ms, KEYPRESS_FLASH_MS);
+        assert_eq!(c.verify_ms, VERIFY_MS);
+        assert_eq!(c.success_flash_ms, SUCCESS_FLASH_MS);
+        assert_eq!(c.error_flash_ms, ERROR_FLASH_MS);
+        assert_eq!(c.max_code_length, 4);
     }
 
     #[test]
@@ -339,6 +385,22 @@ mod tests {
         let (_, intensity) = flash.unwrap_or(('\0', 0.0));
         assert!(intensity < 1.0 && intensity > 0.0);
         assert!(keypad.keypress_flash_intensity(601).is_none());
+    }
+
+    #[test]
+    fn test_visual_profiles_exist() {
+        let mut keypad = DeusExKeypad::new();
+        keypad.start_boot(0);
+        assert!(keypad.boot_glitch_intensity(100) > 0.0);
+        keypad.update(400);
+        let phase = keypad.scanline_phase(1400);
+        assert!((0.0..=1.0).contains(&phase));
+        keypad.press('1', 500);
+        let pulse = keypad.key_visual_pulse(550);
+        assert!(pulse.is_some());
+        let panel = keypad.panel_glow_profile(550);
+        assert!(panel.0 > 0.0);
+        assert!(panel.1 > 0.0);
     }
 
     #[test]

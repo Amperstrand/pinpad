@@ -173,23 +173,29 @@ if __name__ == "__main__":
         y = KEYS_ORIGIN[1] + row * (KEY_H + GAP)
         key_rects[label] = pygame.Rect(x, y, KEY_W, KEY_H)
 
-    def draw_wear(surface, rect) -> None:
+    def build_wear_overlay(rect) -> pygame.Surface:
+        rng = random.Random(1979)
         overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-        for _ in range(420):
-            x = random.randint(0, rect.width - 1)
-            y = random.randint(0, rect.height - 1)
-            alpha = random.randint(6, 28)
+        for _ in range(520):
+            x = rng.randint(0, rect.width - 1)
+            y = rng.randint(0, rect.height - 1)
+            alpha = rng.randint(8, 30)
             overlay.set_at((x, y), (*COLORS["wear"], alpha))
         for i in range(0, rect.height, 8):
             pygame.draw.line(overlay, (*COLORS["wear"], 16), (0, i), (rect.width, i), 1)
-        surface.blit(overlay, rect.topleft)
+        return overlay
+
+    PANEL_WEAR = build_wear_overlay(PANEL_RECT)
+
+    def draw_wear(surface, rect) -> None:
+        surface.blit(PANEL_WEAR, rect.topleft)
 
     def draw_key(surface, label: str, rect, now_ms: int) -> None:
         button = keypad.buttons[label]
         pressed = button.is_pressed(now_ms, config.button_press_ms)
         top = rect.y + (4 if pressed else 0)
         face = pygame.Rect(rect.x, top, rect.width, rect.height)
-        shadow_offset = 1 if pressed else 4
+        shadow_offset = 1 if pressed else 5
 
         shadow_color = _mix_color(COLORS["wear"], (0, 0, 0), 0.45)
         pygame.draw.rect(surface, shadow_color, (rect.x, top + rect.height, rect.width, shadow_offset), border_radius=7)
@@ -205,6 +211,10 @@ if __name__ == "__main__":
         pygame.draw.rect(surface, (*COLORS["wear"], 90), face, 1, border_radius=7)
         jewel = pygame.Rect(face.x + 8, face.y + 8, face.width - 16, face.height - 20)
         pygame.draw.ellipse(surface, (255, 255, 255, 70), jewel)
+
+        edge_grime = pygame.Surface((face.width, face.height), pygame.SRCALPHA)
+        pygame.draw.rect(edge_grime, (*COLORS["wear"], 45), edge_grime.get_rect(), 2, border_radius=7)
+        surface.blit(edge_grime, face.topleft)
 
         text = FONT_LABEL.render(label, True, (247, 251, 255))
         text_rect = text.get_rect(center=face.center)
@@ -223,13 +233,23 @@ if __name__ == "__main__":
         amber_on, green_on = keypad.lamps(now_ms)
         amber_color = COLORS["indicator_amber"] if amber_on else _mix_color(COLORS["indicator_amber"], COLORS["wear"], 0.65)
         green_color = COLORS["indicator_green"] if green_on else _mix_color(COLORS["indicator_green"], COLORS["wear"], 0.65)
+
+        if amber_on:
+            pygame.draw.circle(screen, (*COLORS["indicator_amber"], 55), LAMP_AMBER, 14)
         pygame.draw.circle(screen, amber_color, LAMP_AMBER, 8)
         pygame.draw.circle(screen, (26, 26, 26), LAMP_AMBER, 8, 1)
+
+        if green_on:
+            pygame.draw.circle(screen, (*COLORS["indicator_green"], 50), LAMP_GREEN, 14)
         pygame.draw.circle(screen, green_color, LAMP_GREEN, 8)
         pygame.draw.circle(screen, (26, 26, 26), LAMP_GREEN, 8, 1)
 
         pygame.draw.rect(screen, _mix_color(COLORS["panel_background"], COLORS["wear"], 0.2), DISPLAY_RECT, border_radius=10)
         pygame.draw.rect(screen, _mix_color(COLORS["wear"], COLORS["text"], 0.35), DISPLAY_RECT, 1, border_radius=10)
+
+        crevice_color = _mix_color(COLORS["wear"], COLORS["text"], 0.3)
+        pygame.draw.line(screen, crevice_color, (PANEL_RECT.left + 14, DISPLAY_RECT.bottom + 10), (PANEL_RECT.right - 14, DISPLAY_RECT.bottom + 10), 2)
+        pygame.draw.line(screen, crevice_color, (PANEL_RECT.left + 14, KEYS_ORIGIN[1] - 8), (PANEL_RECT.right - 14, KEYS_ORIGIN[1] - 8), 2)
 
         code_text = FONT_CODE.render(keypad.code, True, COLORS["text"])
         screen.blit(code_text, (DISPLAY_RECT.left + 10, DISPLAY_RECT.top + 6))
@@ -247,9 +267,11 @@ if __name__ == "__main__":
             return None
         if pygame.K_0 <= ev.key <= pygame.K_9:
             return chr(ev.key)
+        if pygame.K_KP0 <= ev.key <= pygame.K_KP9:
+            return str(ev.key - pygame.K_KP0)
         if ev.key == pygame.K_c:
             return "C"
-        if ev.key in (pygame.K_e, pygame.K_RETURN):
+        if ev.key in (pygame.K_e, pygame.K_RETURN, pygame.K_KP_ENTER):
             return "E"
         if ev.key in (pygame.K_BACKSPACE, pygame.K_DELETE, pygame.K_ESCAPE):
             return "C"

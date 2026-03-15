@@ -28,6 +28,9 @@ pub mod colors {
     pub const PURE_BLACK: (u8, u8, u8) = (0, 0, 0);
 }
 
+/// Default Sevastolink access code.
+pub const AUTH_CODE: [char; 4] = ['1', '2', '3', '4'];
+
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
@@ -63,6 +66,14 @@ pub struct SevastolinkConfig {
     /// Default: 0.25
     pub scanline_intensity: f32,
 
+    /// CRT scan line spacing in pixels.
+    /// Default: 2
+    pub scanline_spacing_px: u8,
+
+    /// Phosphor glow strength (0.0-1.0).
+    /// Default: 0.35
+    pub phosphor_glow_strength: f32,
+
     /// Noise intensity (0.0-1.0).
     /// Default: 0.08
     pub noise_intensity: f32,
@@ -70,6 +81,18 @@ pub struct SevastolinkConfig {
     /// Film grain update interval in milliseconds (~10fps).
     /// Default: 100
     pub grain_update_ms: u16,
+
+    /// Minimum interval between occasional CRT flicker events.
+    /// Default: 2000
+    pub flicker_min_ms: u16,
+
+    /// Maximum interval between occasional CRT flicker events.
+    /// Default: 4000
+    pub flicker_max_ms: u16,
+
+    /// Duration for each CRT flicker event.
+    /// Default: 100
+    pub flicker_duration_ms: u16,
 
     /// Chromatic aberration offset in pixels.
     /// Default: 2
@@ -99,8 +122,13 @@ impl SevastolinkConfig {
             success_flash_ms: 400,
             verify_delay_ms: 800,
             scanline_intensity: 0.25,
+            scanline_spacing_px: 2,
+            phosphor_glow_strength: 0.35,
             noise_intensity: 0.08,
             grain_update_ms: 100,
+            flicker_min_ms: 2000,
+            flicker_max_ms: 4000,
+            flicker_duration_ms: 100,
             chroma_offset: 2,
             chroma_threshold: 0.4,
         }
@@ -298,6 +326,21 @@ impl SevastolinkKeypad {
         self.state_change_time = timestamp_ms;
     }
 
+    /// Check whether the current code matches the expected code.
+    #[inline]
+    pub fn code_matches(&self, expected: &[char]) -> bool {
+        let entered = self.code_chars();
+        entered.len() == expected.len() && entered.iter().zip(expected.iter()).all(|(a, b)| a == b)
+    }
+
+    /// Resolve verification using the default Sevastolink auth code.
+    #[inline]
+    pub fn resolve_default_auth(&mut self, timestamp_ms: u64) -> bool {
+        let success = self.code_matches(&AUTH_CODE);
+        self.verify_complete(success, timestamp_ms);
+        success
+    }
+
     /// Complete verification with result.
     ///
     /// # Arguments
@@ -472,8 +515,6 @@ pub fn should_apply_chromatic(flash_intensity: f32, threshold: f32) -> bool {
 mod tests {
     use super::*;
 
-    const TEST_CONFIG: SevastolinkConfig = SevastolinkConfig::new();
-
     #[test]
     fn test_keypad_creation() {
         let keypad = SevastolinkKeypad::new();
@@ -549,6 +590,36 @@ mod tests {
         keypad.reset_auth_state();
         assert_eq!(keypad.auth_state(), AuthState::Idle);
         assert_eq!(keypad.code_len(), 0);
+    }
+
+    #[test]
+    fn test_default_auth_code_resolution() {
+        let mut keypad = SevastolinkKeypad::new();
+
+        keypad.press('1', 1000);
+        keypad.press('2', 1010);
+        keypad.press('3', 1020);
+        keypad.press('4', 1030);
+        keypad.press('E', 1040);
+
+        let ok = keypad.resolve_default_auth(1840);
+        assert!(ok);
+        assert_eq!(keypad.auth_state(), AuthState::Success);
+    }
+
+    #[test]
+    fn test_default_auth_code_denied() {
+        let mut keypad = SevastolinkKeypad::new();
+
+        keypad.press('9', 1000);
+        keypad.press('9', 1010);
+        keypad.press('9', 1020);
+        keypad.press('9', 1030);
+        keypad.press('E', 1040);
+
+        let ok = keypad.resolve_default_auth(1840);
+        assert!(!ok);
+        assert_eq!(keypad.auth_state(), AuthState::Denied);
     }
 
     #[test]

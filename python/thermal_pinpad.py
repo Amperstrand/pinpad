@@ -21,10 +21,15 @@ Usage:
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple
 import math
 import random
 import time
+
+THERMAL_DECAY_TIME_MS = 30000
+DEMO_INTERVAL_MS = 8000
+CODE_DIGIT_INTERVAL_MS = 200
+GRAIN_UPDATE_INTERVAL_MS = 100
 
 
 # =============================================================================
@@ -40,7 +45,7 @@ class ThermalConfig:
         min_visible_intensity: Minimum intensity to render (default: 0.02)
         num_rings: Number of concentric glow rings (default: 10)
     """
-    decay_time_ms: int = 30000
+    decay_time_ms: int = THERMAL_DECAY_TIME_MS
     min_visible_intensity: float = 0.02
     num_rings: int = 10
 
@@ -110,6 +115,8 @@ class ThermalButton:
             return 0.0
         
         elapsed = now_ms - self._pressed_at
+        if elapsed >= config.decay_time_ms:
+            return 0.0
         decay_progress = elapsed / config.decay_time_ms
         
         # Exponential decay formula
@@ -248,40 +255,39 @@ class ThermalColorMapper:
         (0.62, 150, 58, 75),   # green
         (0.8,  55,  60, 86),   # yellow
         (0.92, 48,  90, 94),   # warm yellow
-        (1.0,  42,  88, 94),   # yellow-orange peak
+        (1.0,  50,  87, 94),
     ]
     
     # Color palette definitions: list of (t, [r, g, b])
     _PALETTES = {
-        ThermalPalette.SPLINTER_CELL: None,  # Built from HSV LUT at init
+        ThermalPalette.SPLINTER_CELL: [],
         ThermalPalette.CLASSIC: [
-            (0.0,  [0, 0, 40]),
-            (0.2,  [0, 80, 160]),
-            (0.4,  [0, 200, 200]),
-            (0.6,  [200, 200, 0]),
-            (0.8,  [255, 128, 0]),
-            (1.0,  [255, 50, 50]),
+            (0.0,  (0, 0, 40)),
+            (0.2,  (0, 80, 160)),
+            (0.4,  (0, 200, 200)),
+            (0.6,  (200, 200, 0)),
+            (0.8,  (255, 128, 0)),
+            (1.0,  (255, 50, 50)),
         ],
         ThermalPalette.IRONBOW: [
-            (0.0,  [0, 0, 0]),
-            (0.2,  [40, 0, 60]),
-            (0.4,  [150, 0, 50]),
-            (0.6,  [255, 80, 0]),
-            (0.8,  [255, 220, 80]),
-            (1.0,  [255, 255, 255]),
+            (0.0,  (0, 0, 0)),
+            (0.2,  (40, 0, 60)),
+            (0.4,  (150, 0, 50)),
+            (0.6,  (255, 80, 0)),
+            (0.8,  (255, 220, 80)),
+            (1.0,  (255, 255, 255)),
         ],
         ThermalPalette.HOT_COLD: [
-            (0.0,  [0, 0, 100]),
-            (0.3,  [50, 50, 200]),
-            (0.5,  [255, 255, 255]),
-            (0.7,  [255, 150, 50]),
-            (1.0,  [255, 0, 0]),
+            (0.0,  (0, 0, 100)),
+            (0.3,  (50, 50, 200)),
+            (0.5,  (255, 255, 255)),
+            (0.7,  (255, 150, 50)),
+            (1.0,  (255, 0, 0)),
         ],
     }
     
     def __init__(self):
         self._splinter_lut = self._build_hsv_lut()
-        self._PALETTES[ThermalPalette.SPLINTER_CELL] = self._splinter_lut
     
     @staticmethod
     def _hsv_to_rgb(h: float, s: float, v: float) -> Tuple[int, int, int]:
@@ -309,8 +315,34 @@ class ThermalColorMapper:
             round((g + m) * 255),
             round((b + m) * 255)
         )
+
+    @staticmethod
+    def _lerp_hsv_shortest(
+        h1: float,
+        s1: float,
+        v1: float,
+        h2: float,
+        s2: float,
+        v2: float,
+        t: float,
+    ) -> Tuple[float, float, float]:
+        h_diff = h2 - h1
+        if h_diff > 180:
+            h_diff -= 360
+        if h_diff < -180:
+            h_diff += 360
+
+        h = h1 + h_diff * t
+        if h < 0:
+            h += 360
+        if h >= 360:
+            h -= 360
+
+        s = s1 + (s2 - s1) * t
+        v = v1 + (v2 - v1) * t
+        return h, s, v
     
-    def _build_hsv_lut(self, size: int = 256) -> list:
+    def _build_hsv_lut(self, size: int = 256) -> list[tuple[int, int, int]]:
         stops = self._SPLINTER_HSV_STOPS
         lut = []
         
@@ -330,9 +362,11 @@ class ThermalColorMapper:
             range_t = upper[0] - lower[0]
             factor = 0.0 if range_t == 0 else (gamma_t - lower[0]) / range_t
             
-            h = lower[1] + (upper[1] - lower[1]) * factor
-            s = lower[2] + (upper[2] - lower[2]) * factor
-            v = lower[3] + (upper[3] - lower[3]) * factor
+            h, s, v = self._lerp_hsv_shortest(
+                lower[1], lower[2], lower[3],
+                upper[1], upper[2], upper[3],
+                factor,
+            )
             
             lut.append(self._hsv_to_rgb(h, s, v))
         
@@ -431,6 +465,7 @@ if __name__ == "__main__":
     TARGET_FPS = 60
     NOISE_POINTS = 140
     SCANLINE_SPACING = 3
+    CHROMATIC_MIN_INTENSITY = 0.4
     
     class ThermalPinpadDemo:
         """Tkinter demo application for the thermal pinpad."""
@@ -450,6 +485,8 @@ if __name__ == "__main__":
             # Demo mode state
             self.demo_mode = False
             self.demo_job = None
+            self._grain_points = []
+            self._last_grain_update_ms = 0.0
             
             # Build UI
             self._build_ui()
@@ -496,6 +533,7 @@ if __name__ == "__main__":
             )
             self.canvas.pack()
             self.canvas.bind('<Button-1>', self._on_canvas_click)
+            self.root.bind('<Key>', self._on_key_press)
             
             # Status bar
             status_frame = tk.Frame(container, bg='#0a0a14')
@@ -630,6 +668,23 @@ if __name__ == "__main__":
             if label:
                 self.keypad.press_button(label)
                 self.status_var.set(f'Button "{label}" pressed')
+
+        def _on_key_press(self, event):
+            key = event.char
+
+            if key.isdigit():
+                self.keypad.press_button(key)
+                self.status_var.set(f'Button "{key}" pressed')
+                return
+
+            lower_key = key.lower()
+            if lower_key == 'c':
+                self._reset_heat()
+                return
+
+            if lower_key == 'e' or event.keysym == 'Return':
+                self._enter_random_code()
+                return
         
         def _toggle_demo_mode(self):
             """Toggle demo mode on/off."""
@@ -652,7 +707,7 @@ if __name__ == "__main__":
                 return
             
             self._enter_random_code()
-            self.demo_job = self.root.after(8000, self._run_demo_sequence)
+            self.demo_job = self.root.after(DEMO_INTERVAL_MS, self._run_demo_sequence)
         
         def _reset_heat(self):
             """Reset all heat signatures."""
@@ -661,14 +716,13 @@ if __name__ == "__main__":
         
         def _enter_random_code(self):
             """Enter a random 4-digit code."""
-            import random
             digits = list('0123456789')
             code = ''.join(random.choices(digits, k=4))
             
             # Enter with timing
             now_ms = time.time() * 1000
             for i, digit in enumerate(code):
-                self.keypad.press_button_at(digit, now_ms + i * 200)
+                self.keypad.press_button_at(digit, now_ms + i * CODE_DIGIT_INTERVAL_MS)
             
             self.status_var.set(f"Code entered: {' '.join(code)}")
         
@@ -732,17 +786,24 @@ if __name__ == "__main__":
             self.canvas.create_rectangle(0, CANVAS_HEIGHT - vignette, CANVAS_WIDTH, CANVAS_HEIGHT, fill='#000000', stipple='gray50', outline='')
 
         def _draw_noise(self):
-            import random
-            for _ in range(NOISE_POINTS):
-                x = random.randint(0, CANVAS_WIDTH - 1)
-                y = random.randint(0, CANVAS_HEIGHT - 1)
-                n = random.randint(10, 36)
+            now_ms = time.time() * 1000
+            if now_ms - self._last_grain_update_ms >= GRAIN_UPDATE_INTERVAL_MS:
+                points = []
+                for _ in range(NOISE_POINTS):
+                    x = random.randint(0, CANVAS_WIDTH - 1)
+                    y = random.randint(0, CANVAS_HEIGHT - 1)
+                    n = random.randint(10, 36)
+                    points.append((x, y, n))
+                self._grain_points = points
+                self._last_grain_update_ms = now_ms
+
+            for x, y, n in self._grain_points:
                 c = f'#{n:02x}{min(255, n + 20):02x}{min(255, n + 45):02x}'
                 self.canvas.create_rectangle(x, y, x + 1, y + 1, fill=c, outline='')
 
         def _draw_scanlines(self):
             for y in range(0, CANVAS_HEIGHT, SCANLINE_SPACING):
-                self.canvas.create_line(0, y, CANVAS_WIDTH, y, fill='#000000', stipple='gray50')
+                self.canvas.create_line(0, y, CANVAS_WIDTH, y, fill='#040404', stipple='gray75')
         
         def _draw_button(self, index: int, label: str, intensity: float):
             """Draw a single button with thermal effect."""
@@ -804,16 +865,20 @@ if __name__ == "__main__":
         
         def _draw_button_border(self, x: int, y: int, intensity: float):
             """Draw button border."""
+            if intensity > CHROMATIC_MIN_INTENSITY:
+                self._draw_rounded_rect_outline(x - 1, y, BUTTON_WIDTH, BUTTON_HEIGHT, 6, '#a43a2a')
+                self._draw_rounded_rect_outline(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, 6, '#4fcf72')
+                self._draw_rounded_rect_outline(x + 1, y, BUTTON_WIDTH, BUTTON_HEIGHT, 6, '#3a6fb8')
+                return
+
             if intensity > self.config.min_visible_intensity:
                 alpha = 0.3 + intensity * 0.4
                 r, g, b = int(60 * alpha), int(100 * alpha), int(120 * alpha)
                 color = f'#{r:02x}{g:02x}{b:02x}'
             else:
                 color = '#1e3246'
-            
-            self._draw_rounded_rect_outline(
-                x, y, BUTTON_WIDTH, BUTTON_HEIGHT, 6, color
-            )
+
+            self._draw_rounded_rect_outline(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, 6, color)
         
         def _draw_button_label(self, cx: int, cy: int, label: str, intensity: float):
             """Draw button label."""

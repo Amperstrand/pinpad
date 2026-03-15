@@ -6,6 +6,23 @@
 
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::*;
+use micromath::F32Ext;
+
+const SPLINTER_GAMMA: f32 = 1.3;
+
+#[derive(Clone, Copy, Debug)]
+struct HsvStop {
+    t: f32,
+    h: f32,
+    s: f32,
+    v: f32,
+}
+
+impl HsvStop {
+    const fn new(t: f32, h: f32, s: f32, v: f32) -> Self {
+        Self { t, h, s, v }
+    }
+}
 
 /// A single color stop in a palette.
 #[derive(Clone, Copy, Debug)]
@@ -59,6 +76,16 @@ static SPLINTER_CELL_STOPS: [ColorStop; 7] = [
     ColorStop::new(1.00, 240, 208, 32),
 ];
 
+static SPLINTER_CELL_HSV_STOPS: [HsvStop; 7] = [
+    HsvStop::new(0.00, 275.0, 85.0, 12.0),
+    HsvStop::new(0.20, 265.0, 90.0, 43.0),
+    HsvStop::new(0.40, 195.0, 88.0, 67.0),
+    HsvStop::new(0.62, 150.0, 58.0, 75.0),
+    HsvStop::new(0.80, 55.0, 60.0, 86.0),
+    HsvStop::new(0.92, 48.0, 90.0, 94.0),
+    HsvStop::new(1.00, 50.0, 87.0, 94.0),
+];
+
 /// Classic thermal palette color stops.
 static CLASSIC_STOPS: [ColorStop; 6] = [
     ColorStop::new(0.0, 0, 0, 40),
@@ -87,12 +114,6 @@ static HOT_COLD_STOPS: [ColorStop; 5] = [
     ColorStop::new(0.7, 255, 150, 50),
     ColorStop::new(1.0, 255, 0, 0),
 ];
-
-/// Precomputed Splinter Cell LUT (256 entries)
-/// Generated with gamma=1.3 and HSV interpolation for perceptually smooth thermal gradients.
-/// HSV stops: (h,s,v) at t=0: (230,85,12), t=0.2: (225,90,43), t=0.4: (195,88,67),
-/// t=0.62: (150,58,75), t=0.8: (55,60,86), t=0.92: (48,90,94), t=1.0: (42,88,94)
-static SPLINTER_CELL_LUT: [[u8; 3]; 256] = include!("splinter_cell_lut.inc");
 
 /// Maps intensity values to RGB colors using thermal palettes.
 #[derive(Clone, Copy, Debug, Default)]
@@ -127,10 +148,7 @@ impl ThermalColorMapper {
         let intensity = intensity.clamp(0.0, 1.0);
 
         if self.palette == ThermalPalette::SplinterCell {
-            let idx = (intensity * 255.0 + 0.5) as usize;
-            let idx = idx.min(255);
-            let rgb = SPLINTER_CELL_LUT[idx];
-            return Rgb888::new(rgb[0], rgb[1], rgb[2]);
+            return splinter_hsv_color(intensity);
         }
 
         let stops = self.palette.stops();
@@ -172,6 +190,84 @@ fn interpolate_component(lower: u8, upper: u8, factor: f32) -> u8 {
     (result + 0.5) as u8
 }
 
+#[inline]
+fn splinter_hsv_color(intensity: f32) -> Rgb888 {
+    let gamma_t = F32Ext::powf(intensity, SPLINTER_GAMMA);
+    let mut lower = SPLINTER_CELL_HSV_STOPS[0];
+    let mut upper = SPLINTER_CELL_HSV_STOPS[SPLINTER_CELL_HSV_STOPS.len() - 1];
+
+    for i in 0..SPLINTER_CELL_HSV_STOPS.len() - 1 {
+        if gamma_t >= SPLINTER_CELL_HSV_STOPS[i].t && gamma_t <= SPLINTER_CELL_HSV_STOPS[i + 1].t {
+            lower = SPLINTER_CELL_HSV_STOPS[i];
+            upper = SPLINTER_CELL_HSV_STOPS[i + 1];
+            break;
+        }
+    }
+
+    let range = upper.t - lower.t;
+    let factor = if range == 0.0 {
+        0.0
+    } else {
+        (gamma_t - lower.t) / range
+    };
+
+    let (h, s, v) = lerp_hsv_shortest(lower, upper, factor);
+    let (r, g, b) = hsv_to_rgb(h, s, v);
+    Rgb888::new(r, g, b)
+}
+
+#[inline]
+fn lerp_hsv_shortest(lower: HsvStop, upper: HsvStop, t: f32) -> (f32, f32, f32) {
+    let mut h_diff = upper.h - lower.h;
+    if h_diff > 180.0 {
+        h_diff -= 360.0;
+    }
+    if h_diff < -180.0 {
+        h_diff += 360.0;
+    }
+
+    let mut h = lower.h + h_diff * t;
+    if h < 0.0 {
+        h += 360.0;
+    }
+    if h >= 360.0 {
+        h -= 360.0;
+    }
+
+    let s = lower.s + (upper.s - lower.s) * t;
+    let v = lower.v + (upper.v - lower.v) * t;
+    (h, s, v)
+}
+
+#[inline]
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
+    let s_norm = s / 100.0;
+    let v_norm = v / 100.0;
+    let c = v_norm * s_norm;
+    let x = c * (1.0 - (((h / 60.0) % 2.0) - 1.0).abs());
+    let m = v_norm - c;
+
+    let (r, g, b) = if h < 60.0 {
+        (c, x, 0.0)
+    } else if h < 120.0 {
+        (x, c, 0.0)
+    } else if h < 180.0 {
+        (0.0, c, x)
+    } else if h < 240.0 {
+        (0.0, x, c)
+    } else if h < 300.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+
+    (
+        ((r + m) * 255.0 + 0.5) as u8,
+        ((g + m) * 255.0 + 0.5) as u8,
+        ((b + m) * 255.0 + 0.5) as u8,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,12 +277,26 @@ mod tests {
         let mapper = ThermalColorMapper::with_palette(ThermalPalette::SplinterCell);
 
         let cold = mapper.intensity_to_rgb(0.0);
-        let lut_cold = SPLINTER_CELL_LUT[0];
-        assert_eq!(cold, Rgb888::new(lut_cold[0], lut_cold[1], lut_cold[2]));
+        assert!(cold.b() > cold.r());
+        assert!(cold.b() > cold.g());
 
         let hot = mapper.intensity_to_rgb(1.0);
-        let lut_hot = SPLINTER_CELL_LUT[255];
-        assert_eq!(hot, Rgb888::new(lut_hot[0], lut_hot[1], lut_hot[2]));
+        assert!((hot.r() as i32 - 240).abs() <= 2);
+        assert!((hot.g() as i32 - 208).abs() <= 4);
+        assert!((hot.b() as i32 - 32).abs() <= 3);
+        assert!(hot.r() > hot.g());
+        assert!(hot.g() > hot.b());
+    }
+
+    #[test]
+    fn test_splinter_midpoint_smooth_hsv_blend() {
+        let mapper = ThermalColorMapper::with_palette(ThermalPalette::SplinterCell);
+        let c1 = mapper.intensity_to_rgb(0.40);
+        let c2 = mapper.intensity_to_rgb(0.41);
+
+        assert!((c1.r() as i32 - c2.r() as i32).abs() <= 16);
+        assert!((c1.g() as i32 - c2.g() as i32).abs() <= 16);
+        assert!((c1.b() as i32 - c2.b() as i32).abs() <= 16);
     }
 
     #[test]

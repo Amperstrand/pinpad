@@ -76,6 +76,19 @@
                 inset 0 0 60px rgba(0, 20, 0, 0.3);
         }
 
+        .container::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 5px;
+            pointer-events: none;
+            border: 1px solid rgba(0, 255, 65, 0.18);
+            box-shadow:
+                -1px 0 0 rgba(255, 60, 70, 0.2),
+                1px 0 0 rgba(120, 210, 255, 0.25);
+            mix-blend-mode: screen;
+        }
+
         /* ===========================================
            TERMINAL HEADER
            =========================================== */
@@ -111,6 +124,8 @@
             color: var(--phosphor-green);
             margin-bottom: 15px;
             min-height: 80px;
+            max-height: 140px;
+            overflow-y: auto;
             text-shadow: 0 0 5px var(--glow-green),
                          0 0 10px rgba(0, 255, 65, 0.3);
         }
@@ -330,13 +345,23 @@
                 TYPING_DELAY_MS: 30,
                 TYPING_VARIANCE_MS: 15,
                 TARGET_FPS: 60,
+                BUTTON_ACTIVE_MS: 150,
 
                 // Film grain settings
                 NOISE_POINTS: 800,
                 GRAIN_UPDATE_INTERVAL: 100, // ms (~10fps)
 
                 // Chromatic aberration for active edges
-                CHROMATIC_OFFSET: 2
+                CHROMATIC_OFFSET: 2,
+
+                // Terminal behavior
+                TERMINAL_PROMPT: 'fsociety@fbi-target:~$',
+                MAX_TERMINAL_LINES: 14,
+
+                // Demo pacing
+                DEMO_INITIAL_DELAY_MS: 500,
+                DEMO_CYCLE_MS: 5000,
+                DEMO_SUBMIT_DELAY_MS: 240
             };
 
             // ===========================================
@@ -354,6 +379,7 @@
                 // Demo mode
                 demoMode: false,
                 demoInterval: null,
+                demoTimeouts: [],
 
                 // Animation
                 lastFrameTime: 0,
@@ -449,18 +475,26 @@
              */
             function handleKeyPress(event) {
                 const key = event.key;
+                let consumed = false;
 
                 // Number keys
                 if (/^[0-9]$/.test(key)) {
                     pressButton(key);
+                    consumed = true;
                 }
                 // Enter key
                 else if (key === 'Enter') {
                     pressButton('E');
+                    consumed = true;
                 }
                 // Escape/Backspace for clear
                 else if (key === 'Escape' || key === 'Backspace') {
                     pressButton('C');
+                    consumed = true;
+                }
+
+                if (consumed) {
+                    event.preventDefault();
                 }
             }
 
@@ -514,6 +548,7 @@
                     if (state.enteredPin.length < CONFIG.MAX_PIN_LENGTH) {
                         state.enteredPin += label;
                         updatePinDisplay();
+                        addTerminalLine(`${CONFIG.TERMINAL_PROMPT} keytap ${label}`, 'prompt');
                     }
                 }
 
@@ -602,18 +637,19 @@
              */
             function startDemoSequence() {
                 // Enter a code immediately
-                setTimeout(() => {
+                const kickoffId = setTimeout(() => {
                     if (state.demoMode) {
                         enterDemoPin();
                     }
-                }, 500);
+                }, CONFIG.DEMO_INITIAL_DELAY_MS);
+                state.demoTimeouts.push(kickoffId);
 
                 // Then every 5 seconds
                 state.demoInterval = setInterval(() => {
                     if (state.demoMode) {
                         enterDemoPin();
                     }
-                }, 5000);
+                }, CONFIG.DEMO_CYCLE_MS);
             }
 
             /**
@@ -624,6 +660,11 @@
                     clearInterval(state.demoInterval);
                     state.demoInterval = null;
                 }
+
+                state.demoTimeouts.forEach(timeoutId => {
+                    clearTimeout(timeoutId);
+                });
+                state.demoTimeouts = [];
             }
 
             /**
@@ -633,18 +674,67 @@
                 const demoPins = ['1234', '0000', '9999', '1337'];
                 const pin = demoPins[Math.floor(Math.random() * demoPins.length)];
 
-                addTerminalLine(`[*] Demo: Entering PIN ${pin}`, 'status');
+                clearPin();
+                addTerminalLine('[*] Demo operator active', 'status');
 
-                pin.split('').forEach((digit, index) => {
-                    setTimeout(() => {
-                        pressButton(digit);
-                    }, index * 200);
+                typeTerminalCommand(`pinpad-auth --target ecorp --pin ${pin}`, () => {
+                    let elapsed = 0;
+                    pin.split('').forEach((digit) => {
+                        elapsed += getTypingDelayMs();
+                        const digitTimeout = setTimeout(() => {
+                            if (state.demoMode) {
+                                pressButton(digit);
+                            }
+                        }, elapsed);
+                        state.demoTimeouts.push(digitTimeout);
+                    });
+
+                    const submitTimeout = setTimeout(() => {
+                        if (state.demoMode) {
+                            pressButton('E');
+                        }
+                    }, elapsed + CONFIG.DEMO_SUBMIT_DELAY_MS);
+                    state.demoTimeouts.push(submitTimeout);
                 });
+            }
 
-                // Press enter after PIN
-                setTimeout(() => {
-                    pressButton('E');
-                }, pin.length * 200 + 300);
+            function getTypingDelayMs() {
+                const variance = Math.floor(Math.random() * (CONFIG.TYPING_VARIANCE_MS * 2 + 1)) - CONFIG.TYPING_VARIANCE_MS;
+                return CONFIG.TYPING_DELAY_MS + variance;
+            }
+
+            function typeTerminalCommand(command, onDone) {
+                const line = document.createElement('div');
+                line.className = 'line';
+
+                const promptSpan = document.createElement('span');
+                promptSpan.className = 'prompt';
+                promptSpan.textContent = `${CONFIG.TERMINAL_PROMPT} `;
+
+                const commandSpan = document.createElement('span');
+                commandSpan.className = 'command';
+                line.appendChild(promptSpan);
+                line.appendChild(commandSpan);
+
+                appendTerminalLine(line);
+
+                let index = 0;
+                function step() {
+                    if (index >= command.length) {
+                        if (onDone) {
+                            onDone();
+                        }
+                        return;
+                    }
+
+                    commandSpan.textContent += command[index];
+                    index += 1;
+
+                    const timeoutId = setTimeout(step, getTypingDelayMs());
+                    state.demoTimeouts.push(timeoutId);
+                }
+
+                step();
             }
 
             /**
@@ -654,6 +744,14 @@
                 const line = document.createElement('div');
                 line.className = `line ${className}`;
                 line.textContent = text;
+
+                appendTerminalLine(line);
+            }
+
+            function appendTerminalLine(line) {
+                if (state.terminalOutput.children.length >= CONFIG.MAX_TERMINAL_LINES) {
+                    state.terminalOutput.removeChild(state.terminalOutput.firstChild);
+                }
 
                 // Remove cursor from previous line
                 const cursor = state.terminalOutput.querySelector('.cursor');
@@ -812,7 +910,12 @@
             function drawButton(ctx, index, label) {
                 const pos = getButtonPosition(index);
                 const pressTime = state.buttonStates.get(label);
-                const isPressed = pressTime !== null && (Date.now() - pressTime) < 150;
+                const now = Date.now();
+                const isPressed = pressTime !== null && (now - pressTime) < CONFIG.BUTTON_ACTIVE_MS;
+
+                if (pressTime !== null && (now - pressTime) >= CONFIG.BUTTON_ACTIVE_MS) {
+                    state.buttonStates.set(label, null);
+                }
                 const isHovered = state.hoveredButton === label;
 
                 // Button center for glow effect

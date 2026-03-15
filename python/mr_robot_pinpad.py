@@ -1,3 +1,4 @@
+# pyright: reportMissingImports=false
 """
 Mr. Robot FBI Keypad - Hacker Terminal Style
 
@@ -6,7 +7,7 @@ Core classes are platform-agnostic.
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 import time
 import random
 
@@ -34,6 +35,9 @@ class TerminalConfig:
     cursor_blink_ms: int = 530
     typing_delay_ms: int = 30
     typing_variance_ms: int = 15
+    grain_update_interval_ms: int = 100
+    chromatic_offset_px: int = 2
+    button_active_ms: int = 150
 
 class TerminalButton:
     def __init__(self, label: str):
@@ -94,10 +98,12 @@ class MrRobotKeypad:
 # =============================================================================
 
 if __name__ == "__main__":
-    import importlib
     import sys
 
-    pygame = importlib.import_module("pygame")
+    try:
+        pygame = __import__("pygame")
+    except ModuleNotFoundError:
+        raise SystemExit("pygame is required to run mr_robot_pinpad.py")
     
     pygame.init()
     
@@ -115,6 +121,7 @@ if __name__ == "__main__":
         font_large = pygame.font.Font(None, 24)
     
     keypad = MrRobotKeypad()
+    config = keypad.config
     clock = pygame.time.Clock()
     
     # Terminal output simulation
@@ -123,6 +130,12 @@ if __name__ == "__main__":
         ("[*] Target: E Corp HQ, Floor 23", DIM_GREEN),
         ("[+] System ready. Enter PIN to authenticate.", SUCCESS_GREEN)
     ]
+    TERMINAL_MAX_LINES = 12
+    TERMINAL_PROMPT = "fsociety@fbi-target:~$"
+    DEMO_CYCLE_MS = 5000
+    DEMO_INITIAL_DELAY_MS = 600
+    DEMO_SUBMIT_DELAY_MS = 240
+    DEMO_PINS = ["1234", "0000", "9999", "1337"]
     
     # Layout params
     MARGIN_X = 150
@@ -130,9 +143,84 @@ if __name__ == "__main__":
     BTN_W = 70
     BTN_H = 55
     GAP = 12
-    CHROMATIC_OFFSET = 2
-    GRAIN_UPDATE_INTERVAL_MS = 100
     NOISE_POINTS = 700
+    demo_mode = True
+    next_demo_at = pygame.time.get_ticks() + DEMO_INITIAL_DELAY_MS
+    demo_schedule: list[tuple[int, str]] = []
+    demo_pin_waiting: Optional[str] = None
+    typing_line: Optional[dict[str, Any]] = None
+
+    def typing_delay_ms() -> int:
+        variance = random.randint(-config.typing_variance_ms, config.typing_variance_ms)
+        return max(1, config.typing_delay_ms + variance)
+
+    def append_terminal_line(text: str, color: tuple[int, int, int]) -> None:
+        terminal_lines.append((text, color))
+        if len(terminal_lines) > TERMINAL_MAX_LINES:
+            del terminal_lines[0]
+
+    def queue_typed_command(command: str, color: tuple[int, int, int] = PHOSPHOR_GREEN) -> None:
+        global typing_line
+        full = f"{TERMINAL_PROMPT} {command}"
+        typing_line = {
+            "full": full,
+            "visible": "",
+            "next_tick": pygame.time.get_ticks() + typing_delay_ms(),
+            "color": color,
+        }
+
+    def update_typed_command(now_ms: int) -> None:
+        global typing_line, demo_pin_waiting, demo_schedule
+        if typing_line is None:
+            return
+
+        next_tick = int(typing_line["next_tick"])
+        if now_ms < next_tick:
+            return
+
+        full = str(typing_line["full"])
+        visible = str(typing_line["visible"])
+        if len(visible) < len(full):
+            visible += full[len(visible)]
+            typing_line["visible"] = visible
+            typing_line["next_tick"] = now_ms + typing_delay_ms()
+
+        if len(visible) == len(full):
+            color = typing_line["color"]
+            if isinstance(color, tuple):
+                append_terminal_line(visible, color)
+            typing_line = None
+
+            if demo_pin_waiting is not None:
+                elapsed = 0
+                for digit in demo_pin_waiting:
+                    elapsed += typing_delay_ms()
+                    demo_schedule.append((now_ms + elapsed, digit))
+                demo_schedule.append((now_ms + elapsed + DEMO_SUBMIT_DELAY_MS, 'E'))
+                demo_pin_waiting = None
+
+    def handle_button_press(label: str, now_ms: int, from_demo: bool = False) -> None:
+        if not keypad.press_button(label):
+            return
+
+        button = keypad.get_button(label)
+        if button is not None:
+            button.press(now_ms)
+
+        if label == 'E':
+            masked = '*' * len(keypad.entered_pin)
+            if masked:
+                append_terminal_line(f"[*] Verifying PIN: {masked}", DIM_GREEN)
+            if keypad.entered_pin == keypad.CORRECT_PIN:
+                append_terminal_line("[+] ACCESS GRANTED", SUCCESS_GREEN)
+                append_terminal_line("[+] Femtocell interception active", SUCCESS_GREEN)
+            else:
+                append_terminal_line("[-] ACCESS DENIED", ERROR_RED)
+            keypad.clear_pin()
+        elif label == 'C':
+            append_terminal_line("[*] PIN cleared", DIM_GREEN)
+        elif from_demo and label.isdigit():
+            append_terminal_line(f"[*] Demo keytap: {label}", DIM_GREEN)
     
     def get_btn_rect(index: int):
         row = index // 3
@@ -147,16 +235,28 @@ if __name__ == "__main__":
             surf = font_main.render(text, True, color)
             screen.blit(surf, (20, y))
             y += 20
+
+        if typing_line is not None:
+            active_text = str(typing_line["visible"])
+            color = typing_line["color"]
+            text_color = color if isinstance(color, tuple) else PHOSPHOR_GREEN
+            surf = font_main.render(active_text, True, text_color)
+            screen.blit(surf, (20, y))
+            y += 20
             
         # Draw prompt and PIN asterisks
-        prompt = "fsociety@fbi-internal's password: "
+        prompt = f"{TERMINAL_PROMPT} auth --pin "
         pin_disp = "*" * len(keypad.entered_pin)
         full_text = prompt + pin_disp
+
+        # Phosphor glow pass
+        glow = font_main.render(full_text, True, (0, 80, 30))
+        screen.blit(glow, (20, y))
         surf = font_main.render(full_text, True, CYAN)
         screen.blit(surf, (20, y))
         
         # Cursor
-        if (pygame.time.get_ticks() // keypad.config.cursor_blink_ms) % 2 == 0:
+        if (pygame.time.get_ticks() // config.cursor_blink_ms) % 2 == 0:
             cx = 20 + font_main.size(full_text)[0] + 2
             pygame.draw.rect(screen, PHOSPHOR_GREEN, (cx, y + 2, 8, 14))
 
@@ -182,17 +282,17 @@ if __name__ == "__main__":
             return
 
         alpha = 90 if is_pressed else 64
-        overlay = pygame.Surface((rect.width + CHROMATIC_OFFSET * 2, rect.height), pygame.SRCALPHA)
+        overlay = pygame.Surface((rect.width + config.chromatic_offset_px * 2, rect.height), pygame.SRCALPHA)
 
         left_rect = pygame.Rect(0, 0, rect.width, rect.height)
-        center_rect = pygame.Rect(CHROMATIC_OFFSET, 0, rect.width, rect.height)
-        right_rect = pygame.Rect(CHROMATIC_OFFSET * 2, 0, rect.width, rect.height)
+        center_rect = pygame.Rect(config.chromatic_offset_px, 0, rect.width, rect.height)
+        right_rect = pygame.Rect(config.chromatic_offset_px * 2, 0, rect.width, rect.height)
 
         pygame.draw.rect(overlay, (255, 60, 70, int(alpha * 0.45)), left_rect, 1, border_radius=3)
         pygame.draw.rect(overlay, (0, 255, 65, alpha), center_rect, 1, border_radius=3)
         pygame.draw.rect(overlay, (120, 210, 255, int(alpha * 0.5)), right_rect, 1, border_radius=3)
 
-        screen.blit(overlay, (rect.x - CHROMATIC_OFFSET, rect.y))
+        screen.blit(overlay, (rect.x - config.chromatic_offset_px, rect.y))
 
     cached_grain = build_grain_surface()
     last_grain_update = pygame.time.get_ticks()
@@ -212,45 +312,39 @@ if __name__ == "__main__":
                     pos = event.pos
                     for i, label in enumerate(keypad.BUTTONS):
                         if get_btn_rect(i).collidepoint(pos):
-                            # Use pygame ticks for consistent timing
-                            btn = keypad.get_button(label)
-                            if btn is not None:
-                                btn.press(current_time)
-                            if label == 'C':
-                                keypad.clear_pin()
-                            elif label == 'E':
-                                if keypad.entered_pin == keypad.CORRECT_PIN:
-                                    terminal_lines.append(("[+] ACCESS GRANTED", SUCCESS_GREEN))
-                                else:
-                                    terminal_lines.append(("[-] ACCESS DENIED", ERROR_RED))
-                                keypad.clear_pin()
-                            elif label.isdigit():
-                                if len(keypad.entered_pin) < keypad.MAX_PIN_LENGTH:
-                                    keypad.entered_pin += label
+                            handle_button_press(label, current_time)
                                 
             elif event.type == pygame.KEYDOWN:
                 char = event.unicode.upper()
                 if char in keypad.BUTTONS and char not in ['C', 'E']:
-                    btn = keypad.get_button(char)
-                    if btn is not None:
-                        btn.press(current_time)
-                    if char.isdigit() and len(keypad.entered_pin) < keypad.MAX_PIN_LENGTH:
-                        keypad.entered_pin += char
+                    handle_button_press(char, current_time)
                 elif event.key == pygame.K_RETURN:
-                    btn = keypad.get_button('E')
-                    if btn is not None:
-                        btn.press(current_time)
-                    if keypad.entered_pin == keypad.CORRECT_PIN:
-                        terminal_lines.append(("[+] ACCESS GRANTED", SUCCESS_GREEN))
-                    else:
-                        terminal_lines.append(("[-] ACCESS DENIED", ERROR_RED))
-                    keypad.clear_pin()
+                    handle_button_press('E', current_time)
                 elif event.key == pygame.K_ESCAPE or event.key == pygame.K_BACKSPACE:
-                    btn = keypad.get_button('C')
-                    if btn is not None:
-                        btn.press(current_time)
-                    keypad.clear_pin()
-                    
+                    handle_button_press('C', current_time)
+                elif event.key == pygame.K_F1:
+                    demo_mode = not demo_mode
+                    state = "enabled" if demo_mode else "disabled"
+                    append_terminal_line(f"[*] Demo mode {state}", DIM_GREEN)
+                    if demo_mode:
+                        next_demo_at = current_time + DEMO_INITIAL_DELAY_MS
+                        demo_schedule.clear()
+                        demo_pin_waiting = None
+
+        update_typed_command(current_time)
+
+        if demo_mode and typing_line is None and not demo_schedule and current_time >= next_demo_at:
+            pin = random.choice(DEMO_PINS)
+            demo_pin_waiting = pin
+            queue_typed_command(f"pinpad-auth --target ecorp --pin {pin}")
+            next_demo_at = current_time + DEMO_CYCLE_MS
+
+        if demo_schedule:
+            due = [item for item in demo_schedule if item[0] <= current_time]
+            demo_schedule = [item for item in demo_schedule if item[0] > current_time]
+            for _, label in due:
+                handle_button_press(label, current_time, from_demo=True)
+                     
         screen.fill(DEEP_BLACK)
         
         # Draw background elements
@@ -266,7 +360,7 @@ if __name__ == "__main__":
             if rect.collidepoint(hover_pos):
                 hovered_label = label
             
-            is_pressed = btn is not None and btn.pressed_at is not None and (current_time - btn.pressed_at < 150)
+            is_pressed = btn is not None and btn.pressed_at is not None and (current_time - btn.pressed_at < config.button_active_ms)
             is_hovered = hovered_label == label
             
             # Draw phosphor glow for pressed buttons
@@ -292,7 +386,7 @@ if __name__ == "__main__":
             text_rect = text_surf.get_rect(center=rect.center)
             screen.blit(text_surf, text_rect)
 
-        if current_time - last_grain_update >= GRAIN_UPDATE_INTERVAL_MS:
+        if current_time - last_grain_update >= config.grain_update_interval_ms:
             cached_grain = build_grain_surface()
             last_grain_update = current_time
 

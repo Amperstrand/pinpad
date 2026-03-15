@@ -83,8 +83,8 @@ pub mod wargames;
 // Re-export thermal types
 pub use color::{ColorStop, ThermalColorMapper, ThermalPalette};
 pub use thermal::{
-    ring_intensity, ThermalButton, ThermalConfig, ThermalKeypad,
-    BUTTON_LABELS as THERMAL_BUTTON_LABELS,
+    map_key_input, ring_intensity, ThermalButton, ThermalConfig, ThermalKeyInput, ThermalKeypad,
+    BUTTON_LABELS as THERMAL_BUTTON_LABELS, THERMAL_DECAY_TIME_MS,
 };
 
 pub use tron::{

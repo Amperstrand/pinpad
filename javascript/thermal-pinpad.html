@@ -200,7 +200,7 @@
     </div>
 
     <div class="instructions">
-        Brightness indicates recency: brightest = most recent press
+        Brightness indicates recency. Keyboard: 0-9 press, C clears, E/Enter injects code
     </div>
 
     <script>
@@ -209,7 +209,7 @@
         // Pure Vanilla JavaScript Implementation
         // ===========================================
 
-        (function() {
+        (() => {
             'use strict';
 
             // ===========================================
@@ -240,7 +240,10 @@
                 MIN_INTENSITY: 0.02,       // Below this, skip rendering
                 NOISE_POINTS: 140,
                 SCANLINE_STEP: 3,
-                SCANLINE_ALPHA: 0.07,
+                SCANLINE_ALPHA: 0.05,
+                GRAIN_UPDATE_INTERVAL_MS: 100,
+                DEMO_INTERVAL_MS: 8000,
+                CODE_DIGIT_INTERVAL_MS: 200,
 
                 // Animation
                 TARGET_FPS: 60,
@@ -267,7 +270,7 @@
                         { t: 0.62, h: 150, s: 58, v: 75 },  // green
                         { t: 0.8,  h: 55,  s: 60, v: 86 },  // yellow
                         { t: 0.92, h: 48,  s: 90, v: 94 },  // warm yellow
-                        { t: 1.0,  h: 42,  s: 88, v: 94 }   // yellow-orange peak
+                        { t: 1.0,  h: 50,  s: 87, v: 94 }   // yellow-orange peak (#f0d020)
                     ],
                     // Pre-computed RGB LUT (256 entries) generated at init
                     rgbLUT: null,
@@ -365,7 +368,7 @@
                     const t = i / 255;
                     
                     // Apply gamma to input for better perceptual distribution
-                    const gammaT = Math.pow(t, gamma);
+                    const gammaT = t ** gamma;
                     
                     // Find the two stops to interpolate between
                     let lower = hsvStops[0];
@@ -429,7 +432,6 @@
                 // Film grain (slow update ~10fps)
                 grainImageData: null,
                 lastGrainUpdate: 0,
-                GRAIN_UPDATE_INTERVAL: 100, // ms (10fps)
 
                 // UI references
                 canvas: null,
@@ -476,6 +478,25 @@
                 document.getElementById('resetBtn').addEventListener('click', resetHeat);
                 document.getElementById('randomBtn').addEventListener('click', enterRandomCode);
                 document.getElementById('paletteSelect').addEventListener('change', handlePaletteChange);
+                document.addEventListener('keydown', handleKeyDown);
+            }
+
+            function handleKeyDown(event) {
+                const key = event.key;
+                if (/^[0-9]$/.test(key)) {
+                    pressButton(key);
+                    return;
+                }
+
+                if (key === 'c' || key === 'C') {
+                    resetHeat();
+                    return;
+                }
+
+                if (key === 'e' || key === 'E' || key === 'Enter') {
+                    enterRandomCode();
+                    return;
+                }
             }
 
             /**
@@ -563,7 +584,7 @@
                     if (state.demoMode) {
                         enterRandomCode();
                     }
-                }, 8000);
+                }, CONFIG.DEMO_INTERVAL_MS);
             }
 
             /**
@@ -603,7 +624,7 @@
                 code.forEach((digit, index) => {
                     setTimeout(() => {
                         pressButton(digit);
-                    }, index * 200); // 200ms between presses
+                    }, index * CONFIG.CODE_DIGIT_INTERVAL_MS);
                 });
 
                 updateStatus(`Code entered: ${code.join(' ')}`);
@@ -636,6 +657,7 @@
                 if (pressTime === null) return 0;
 
                 const elapsed = Date.now() - pressTime;
+                if (elapsed >= CONFIG.DECAY_TIME_MS) return 0;
                 const decayProgress = elapsed / CONFIG.DECAY_TIME_MS;
                 
                 // Exponential decay formula
@@ -649,7 +671,7 @@
              * ring_intensity = base_intensity * (1 - ring_index/total_rings)^2
              */
             function calculateRingIntensity(baseIntensity, ringIndex, totalRings) {
-                const falloff = Math.pow(1 - (ringIndex / totalRings), 2);
+                const falloff = (1 - (ringIndex / totalRings)) ** 2;
                 return baseIntensity * falloff;
             }
 
@@ -764,7 +786,7 @@
                 const now = performance.now();
                 
                 // Regenerate grain pattern every ~100ms (10fps)
-                if (!state.grainImageData || now - state.lastGrainUpdate > state.GRAIN_UPDATE_INTERVAL) {
+                if (!state.grainImageData || now - state.lastGrainUpdate > CONFIG.GRAIN_UPDATE_INTERVAL_MS) {
                     state.grainImageData = generateFilmGrain(canvas);
                     state.lastGrainUpdate = now;
                 }
@@ -846,21 +868,21 @@
              */
             function drawThermalGlow(ctx, centerX, centerY, baseIntensity) {
                 const maxRadius = Math.max(CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT) * 1.1;
-                const outerColor = getColorForIntensity(baseIntensity * 0.45);
-                const midColor = getColorForIntensity(baseIntensity * 0.72);
                 const coreColor = getColorForIntensity(baseIntensity);
 
-                const outer = ctx.createRadialGradient(
-                    centerX, centerY, 0,
-                    centerX, centerY, maxRadius
-                );
-                outer.addColorStop(0, `rgba(${coreColor[0]}, ${coreColor[1]}, ${coreColor[2]}, ${Math.min(0.42, baseIntensity * 0.48)})`);
-                outer.addColorStop(0.5, `rgba(${midColor[0]}, ${midColor[1]}, ${midColor[2]}, ${Math.min(0.22, baseIntensity * 0.26)})`);
-                outer.addColorStop(1, `rgba(${outerColor[0]}, ${outerColor[1]}, ${outerColor[2]}, 0)`);
-                ctx.fillStyle = outer;
-                ctx.beginPath();
-                ctx.arc(centerX, centerY, maxRadius, 0, Math.PI * 2);
-                ctx.fill();
+                for (let ring = CONFIG.TOTAL_RINGS - 1; ring >= 0; ring--) {
+                    const ringIntensity = calculateRingIntensity(baseIntensity, ring, CONFIG.TOTAL_RINGS);
+                    if (ringIntensity < CONFIG.MIN_INTENSITY) continue;
+
+                    const ringColor = getColorForIntensity(ringIntensity);
+                    const radius = maxRadius * ((ring + 1) / CONFIG.TOTAL_RINGS);
+                    const alpha = Math.min(0.34, 0.07 + ringIntensity * 0.28);
+
+                    ctx.fillStyle = `rgba(${ringColor[0]}, ${ringColor[1]}, ${ringColor[2]}, ${alpha})`;
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
 
                 const coreRadius = maxRadius * 0.35;
                 ctx.fillStyle = `rgba(${coreColor[0]}, ${coreColor[1]}, ${coreColor[2]}, ${Math.min(0.35, baseIntensity * 0.4)})`;
