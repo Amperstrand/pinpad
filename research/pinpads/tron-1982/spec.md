@@ -210,9 +210,10 @@ pub const DEEP_BLACK: Rgb888 = Rgb888::new(3, 5, 4);
 
 - [x] Research complete
 - [x] Specification written
-- [ ] JavaScript implementation
-- [ ] Python implementation
-- [ ] Rust implementation
+- [x] JavaScript implementation
+- [x] Python implementation
+- [x] Rust implementation
+- [x] Screenshots captured
 
 ---
 

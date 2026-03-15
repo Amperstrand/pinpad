@@ -246,9 +246,10 @@ pub const BACKGROUND: Rgb888 = Rgb888::new(5, 26, 5);
 
 - [x] Research complete
 - [x] Specification written
-- [ ] JavaScript implementation
-- [ ] Python implementation
-- [ ] Rust implementation
+- [x] JavaScript implementation
+- [x] Python implementation
+- [x] Rust implementation
+- [x] Screenshots captured
 
 ---
 

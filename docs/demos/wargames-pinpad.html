@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WarGames NORAD Terminal</title>
+    <style>
+        :root {
+            --phosphor-green: #00AA00;
+            --bright-green: #18E699;
+            --dim-green: #10540E;
+            --background: #051A05;
+            --black: #000000;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            background: radial-gradient(circle at center, #0a290a 0%, var(--background) 45%, var(--black) 100%);
+            color: var(--phosphor-green);
+            font-family: "Courier New", "Lucida Console", monospace;
+            overflow: hidden;
+        }
+
+        .terminal {
+            width: min(900px, 100%);
+            height: min(620px, 86vh);
+            background: linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.55)), var(--background);
+            border: 1px solid var(--dim-green);
+            border-radius: 12px;
+            box-shadow:
+                0 0 16px rgba(24, 230, 153, 0.12),
+                0 0 55px rgba(0, 170, 0, 0.15),
+                inset 0 0 100px rgba(0, 0, 0, 0.65);
+            position: relative;
+            overflow: hidden;
+            transform: perspective(1000px) rotateX(0.3deg);
+        }
+
+        .crt-curve {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse 120% 120% at 50% 50%, transparent 0%, transparent 65%, rgba(0, 0, 0, 0.35) 100%);
+            z-index: 4;
+        }
+
+        .terminal::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: repeating-linear-gradient(
+                to bottom,
+                rgba(0, 0, 0, 0.0) 0px,
+                rgba(0, 0, 0, 0.0) 2px,
+                rgba(0, 0, 0, 0.28) 2px,
+                rgba(0, 0, 0, 0.28) 4px
+            );
+            animation: scan-drift 14s linear infinite;
+            z-index: 3;
+        }
+
+        .phosphor-persist {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse at center, rgba(0, 170, 0, 0.03) 0%, transparent 70%);
+            filter: blur(1.5px);
+            z-index: 0;
+            animation: phosphor-glow 3.2s ease-in-out infinite alternate;
+        }
+
+        .flicker {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: transparent;
+            z-index: 5;
+            animation: screen-flicker 8.5s steps(1) infinite;
+        }
+
+        .terminal::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(circle at center, rgba(24, 230, 153, 0.08) 0%, rgba(0, 0, 0, 0.0) 58%, rgba(0, 0, 0, 0.5) 100%);
+            z-index: 2;
+        }
+
+        .screen {
+            position: absolute;
+            inset: 0;
+            padding: 18px 18px 12px;
+            display: flex;
+            flex-direction: column;
+            z-index: 1;
+        }
+
+        .header {
+            color: var(--bright-green);
+            font-size: 14px;
+            letter-spacing: 0.06em;
+            border-bottom: 1px solid rgba(16, 84, 14, 0.8);
+            padding-bottom: 8px;
+            text-shadow:
+                0 0 1px var(--phosphor-green),
+                0 0 2px var(--phosphor-green),
+                0 0 8px rgba(0, 170, 0, 0.35),
+                0 0 14px rgba(0, 170, 0, 0.2);
+        }
+
+        .output {
+            flex: 1;
+            margin-top: 12px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 19px;
+            line-height: 1.26;
+            text-shadow:
+                0 0 1px var(--phosphor-green),
+                0 0 2px var(--phosphor-green),
+                0 0 7px rgba(0, 170, 0, 0.45),
+                0 0 11px rgba(0, 170, 0, 0.25),
+                0 0 18px rgba(0, 170, 0, 0.15);
+        }
+
+        .line {
+            min-height: 1.26em;
+        }
+
+        .line.dim {
+            color: var(--dim-green);
+        }
+
+        .line.highlight {
+            color: var(--bright-green);
+        }
+
+        .prompt-row {
+            display: flex;
+            align-items: center;
+            font-size: 19px;
+            line-height: 1.2;
+            color: var(--bright-green);
+            padding-top: 8px;
+            border-top: 1px solid rgba(16, 84, 14, 0.8);
+            text-shadow:
+                0 0 1px var(--phosphor-green),
+                0 0 2px var(--phosphor-green),
+                0 0 8px rgba(0, 170, 0, 0.4),
+                0 0 14px rgba(0, 170, 0, 0.2);
+            letter-spacing: 0.02em;
+        }
+
+        .prompt-label {
+            margin-right: 8px;
+            flex-shrink: 0;
+        }
+
+        .prompt-input {
+            flex: 1;
+            min-height: 1.2em;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 10px;
+            height: 18px;
+            margin-left: 2px;
+            background: var(--phosphor-green);
+            vertical-align: text-bottom;
+            box-shadow:
+                0 0 6px rgba(0, 170, 0, 0.8),
+                0 0 12px rgba(0, 170, 0, 0.5),
+                0 0 20px rgba(0, 170, 0, 0.3);
+        }
+
+        @keyframes scan-drift {
+            from { transform: translateY(0); }
+            to { transform: translateY(4px); }
+        }
+
+        @keyframes screen-flicker {
+            0%, 94%, 96%, 98%, 100% { opacity: 0; background: transparent; }
+            95% { opacity: 0.08; background: rgba(0, 255, 0, 0.15); }
+            97% { opacity: 0.04; background: rgba(0, 255, 0, 0.1); }
+            99% { opacity: 0.02; background: rgba(0, 255, 0, 0.05); }
+        }
+
+        @keyframes phosphor-glow {
+            0% { opacity: 0.6; filter: blur(1.5px); }
+            50% { opacity: 0.85; filter: blur(2px); }
+            100% { opacity: 0.7; filter: blur(1.5px); }
+        }
+
+        @media (max-width: 700px) {
+            .output,
+            .prompt-row {
+                font-size: 16px;
+            }
+
+            .cursor {
+                width: 9px;
+                height: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="terminal" aria-label="WarGames NORAD terminal emulator">
+        <div class="phosphor-persist"></div>
+        <section class="screen">
+            <div class="header">NORAD STRATEGIC RESPONSE SYSTEM // IMSAI 8080 REMOTE NODE</div>
+            <div id="output" class="output" aria-live="polite"></div>
+            <div class="prompt-row">
+                <span class="prompt-label">NORAD&gt;</span>
+                <span id="promptInput" class="prompt-input"></span><span id="cursor" class="cursor" aria-hidden="true"></span>
+            </div>
+        </section>
+        <div class="crt-curve"></div>
+        <div class="flicker"></div>
+    </main>
+
+    <script>
+        (() => {
+            "use strict";
+
+            const COLORS = {
+                phosphorGreen: "#00AA00",
+                brightGreen: "#18E699",
+                dimGreen: "#10540E",
+                background: "#051A05",
+                black: "#000000",
+            };
+
+            const TIMING = {
+                typeDelayMs: 30,
+                typeVarianceMs: 15,
+                newlinePauseMs: 170,
+                cursorBlinkMinMs: 530,
+                cursorBlinkMaxMs: 1000,
+            };
+
+            const MENU = [
+                "GAMES LIST:",
+                "",
+                "1. GLOBAL THERMONUCLEAR WAR",
+                "2. POKER",
+                "3. CHESS",
+                "4. FIGHTER COMBAT",
+                "",
+                "SELECT: _",
+            ];
+
+            const outputEl = document.getElementById("output");
+            const promptInputEl = document.getElementById("promptInput");
+            const cursorEl = document.getElementById("cursor");
+
+            const state = {
+                input: "",
+                isTyping: true,
+                selectedGame: null,
+                blinkVisible: true,
+                blinkTimer: null,
+            };
+
+            function jitterDelay() {
+                const variance = (Math.random() * 2 - 1) * TIMING.typeVarianceMs;
+                return Math.max(8, Math.round(TIMING.typeDelayMs + variance));
+            }
+
+            function appendLine(initialText = "", className = "") {
+                const line = document.createElement("div");
+                line.className = className ? `line ${className}` : "line";
+                line.textContent = initialText;
+                outputEl.appendChild(line);
+                outputEl.scrollTop = outputEl.scrollHeight;
+                return line;
+            }
+
+            function wait(ms) {
+                return new Promise((resolve) => setTimeout(resolve, ms));
+            }
+
+            async function typeToLine(lineEl, text) {
+                for (const ch of text) {
+                    lineEl.textContent += ch;
+                    outputEl.scrollTop = outputEl.scrollHeight;
+                    await wait(jitterDelay());
+                }
+            }
+
+            async function typeLine(text, className = "") {
+                const line = appendLine("", className);
+                await typeToLine(line, text);
+                await wait(TIMING.newlinePauseMs);
+                return line;
+            }
+
+            async function typeBlock(lines, className = "") {
+                for (const line of lines) {
+                    await typeLine(line, className);
+                }
+            }
+
+            function setPromptInput(text) {
+                state.input = text;
+                promptInputEl.textContent = text;
+            }
+
+            function paintPalette() {
+                document.documentElement.style.setProperty("--phosphor-green", COLORS.phosphorGreen);
+                document.documentElement.style.setProperty("--bright-green", COLORS.brightGreen);
+                document.documentElement.style.setProperty("--dim-green", COLORS.dimGreen);
+                document.documentElement.style.setProperty("--background", COLORS.background);
+                document.documentElement.style.setProperty("--black", COLORS.black);
+            }
+
+            function startCursorBlink() {
+                function tick() {
+                    state.blinkVisible = !state.blinkVisible;
+                    cursorEl.style.visibility = state.blinkVisible ? "visible" : "hidden";
+                    const next = TIMING.cursorBlinkMinMs + Math.floor(Math.random() * (TIMING.cursorBlinkMaxMs - TIMING.cursorBlinkMinMs + 1));
+                    state.blinkTimer = setTimeout(tick, next);
+                }
+                if (state.blinkTimer) {
+                    clearTimeout(state.blinkTimer);
+                }
+                const initial = TIMING.cursorBlinkMinMs + Math.floor(Math.random() * (TIMING.cursorBlinkMaxMs - TIMING.cursorBlinkMinMs + 1));
+                state.blinkTimer = setTimeout(tick, initial);
+            }
+
+            function parseSelection(token) {
+                if (token === "1" || token.includes("GLOBAL")) {
+                    return 1;
+                }
+                if (token === "2" || token.includes("POKER")) {
+                    return 2;
+                }
+                if (token === "3" || token.includes("CHESS")) {
+                    return 3;
+                }
+                if (token === "4" || token.includes("FIGHTER")) {
+                    return 4;
+                }
+                return null;
+            }
+
+            async function showMenu() {
+                await typeBlock(MENU);
+            }
+
+            async function handleCommand(rawInput) {
+                const command = rawInput.trim();
+                const upper = command.toUpperCase();
+                appendLine(`NORAD> ${command || ""}`);
+
+                if (!command) {
+                    await typeLine("ENTER COMMAND. TRY HELP.", "dim");
+                    return;
+                }
+
+                if (upper === "HELP" || upper === "?" || upper === "MAN") {
+                    await typeBlock([
+                        "AVAILABLE COMMANDS:",
+                        "  LIST              SHOW GAMES LIST",
+                        "  SELECT <1-4>      CHOOSE A GAME",
+                        "  PLAY <NAME|#>     START SELECTED GAME",
+                        "  STATUS            SHOW CURRENT TARGET",
+                        "  CLEAR             CLEAR TERMINAL",
+                        "  HELP              SHOW THIS MESSAGE",
+                    ], "dim");
+                    return;
+                }
+
+                if (upper === "LIST" || upper === "GAMES") {
+                    await showMenu();
+                    return;
+                }
+
+                if (upper.startsWith("SELECT ")) {
+                    const token = upper.replace("SELECT", "").trim();
+                    const selection = parseSelection(token);
+                    if (selection === null) {
+                        await typeLine("INVALID SELECTION. CHOOSE 1-4.", "dim");
+                        return;
+                    }
+                    state.selectedGame = selection;
+                    const names = {
+                        1: "GLOBAL THERMONUCLEAR WAR",
+                        2: "POKER",
+                        3: "CHESS",
+                        4: "FIGHTER COMBAT",
+                    };
+                    await typeLine(`SELECTION ACCEPTED: ${names[selection]}`, "highlight");
+                    await typeLine("TYPE PLAY TO EXECUTE.", "dim");
+                    return;
+                }
+
+                if (upper.startsWith("PLAY")) {
+                    let selection = state.selectedGame;
+                    if (upper !== "PLAY") {
+                        const token = upper.replace("PLAY", "").trim();
+                        selection = parseSelection(token);
+                    }
+
+                    if (selection === null || selection === undefined) {
+                        await typeLine("NO GAME SELECTED. USE SELECT <1-4>.", "dim");
+                        return;
+                    }
+
+                    if (selection === 1) {
+                        await typeBlock([
+                            "SIMULATION BOOTSTRAP: GLOBAL THERMONUCLEAR WAR",
+                            "CONNECTING TO WOPR...",
+                            "GREETINGS PROFESSOR FALKEN.",
+                            "SHALL WE PLAY A GAME?",
+                        ], "highlight");
+                        return;
+                    }
+
+                    const names = {
+                        2: "POKER",
+                        3: "CHESS",
+                        4: "FIGHTER COMBAT",
+                    };
+                    await typeLine(`${names[selection]} NOT INSTALLED ON THIS NODE.`, "dim");
+                    await typeLine("RECOMMENDED: GLOBAL THERMONUCLEAR WAR", "highlight");
+                    return;
+                }
+
+                if (upper === "STATUS") {
+                    if (state.selectedGame === null) {
+                        await typeLine("STATUS: IDLE / NO ACTIVE GAME", "dim");
+                    } else {
+                        const names = {
+                            1: "GLOBAL THERMONUCLEAR WAR",
+                            2: "POKER",
+                            3: "CHESS",
+                            4: "FIGHTER COMBAT",
+                        };
+                        await typeLine(`STATUS: READY / TARGET=${names[state.selectedGame]}`, "highlight");
+                    }
+                    return;
+                }
+
+                if (upper === "CLEAR" || upper === "CLS") {
+                    outputEl.innerHTML = "";
+                    return;
+                }
+
+                await typeLine(`UNKNOWN COMMAND: ${upper}`, "dim");
+                await typeLine("TYPE HELP FOR COMMAND INDEX.", "dim");
+            }
+
+            function setupKeyboard() {
+                document.addEventListener("keydown", async (event) => {
+                    if (state.isTyping) {
+                        return;
+                    }
+
+                    if (event.key === "Backspace") {
+                        event.preventDefault();
+                        setPromptInput(state.input.slice(0, -1));
+                        return;
+                    }
+
+                    if (event.key === "Enter") {
+                        event.preventDefault();
+                        const submitted = state.input;
+                        setPromptInput("");
+                        state.isTyping = true;
+                        await handleCommand(submitted);
+                        state.isTyping = false;
+                        return;
+                    }
+
+                    if (event.key.length === 1) {
+                        const code = event.key.charCodeAt(0);
+                        if (code >= 32 && code <= 126) {
+                            setPromptInput(state.input + event.key.toUpperCase());
+                        }
+                    }
+                });
+            }
+
+            async function boot() {
+                state.isTyping = true;
+                await typeLine("", "dim");
+                await typeLine("NORAD REMOTE STRATEGIC TERMINAL", "highlight");
+                await typeLine("IMSAI 8080 CONNECTED", "dim");
+                await typeLine("SECURITY LEVEL: SIMULATION / TRAINING", "dim");
+                await typeLine("TYPE HELP FOR COMMAND LIST", "dim");
+                await typeLine("", "dim");
+                await showMenu();
+                state.isTyping = false;
+            }
+
+            paintPalette();
+            setupKeyboard();
+            startCursorBlink();
+            boot();
+        })();
+    </script>
+</body>
+</html>

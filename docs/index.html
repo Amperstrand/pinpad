@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pinpad - Movie & Game Keypad Effects</title>
-    <meta name="description" content="Collection of iconic pinpad implementations from movies and games: Splinter Cell thermal vision, Available in JavaScript, Python/LVGL, and Rust/embedded-graphics.">
+    <meta name="description" content="Collection of 8 iconic keypad implementations from movies and games: Splinter Cell thermal vision, Alien Nostromo, Mr. Robot, WarGames NORAD, Deus Ex HR, Dead Space RIG, and Tron. Available in JavaScript, Python/LVGL, and Rust/embedded-graphics.">
     <style>
         :root {
             --bg-dark: #050f1e;
@@ -21,6 +21,11 @@
             --seegson-green: #05b669;
             --acid-blood: #f07826;
             --phosphor-green: #00FF41;
+            --nostromo-amber: #FFB000;
+            --wargames-amber: #FFAA00;
+            --deusex-gold: #D4AF37;
+            --deadspace-blue: #00BFFF;
+            --tron-cyan: #00FFFF;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -103,6 +108,11 @@
         .pinpad-card.thermal:hover { border-color: var(--text-cyan); box-shadow: 0 0 30px rgba(0, 212, 255, 0.3); }
         .pinpad-card.sevastolink:hover { border-color: var(--seegson-green); box-shadow: 0 0 30px rgba(5, 182, 105, 0.3); }
         .pinpad-card.mr-robot:hover { border-color: var(--phosphor-green); box-shadow: 0 0 30px rgba(0, 255, 65, 0.3); }
+        .pinpad-card.nostromo:hover { border-color: var(--nostromo-amber); box-shadow: 0 0 30px rgba(255, 176, 0, 0.3); }
+        .pinpad-card.wargames:hover { border-color: var(--wargames-amber); box-shadow: 0 0 30px rgba(255, 170, 0, 0.3); }
+        .pinpad-card.deusex:hover { border-color: var(--deusex-gold); box-shadow: 0 0 30px rgba(212, 175, 55, 0.3); }
+        .pinpad-card.deadspace:hover { border-color: var(--deadspace-blue); box-shadow: 0 0 30px rgba(0, 191, 255, 0.3); }
+        .pinpad-card.tron:hover { border-color: var(--tron-cyan); box-shadow: 0 0 30px rgba(0, 255, 255, 0.3); }
 
         .pinpad-preview {
             aspect-ratio: 4/5;
@@ -116,6 +126,11 @@
         .pinpad-card.thermal .pinpad-preview { background: linear-gradient(135deg, #050f1e 0%, #0a1a30 100%); }
         .pinpad-card.sevastolink .pinpad-preview { background: linear-gradient(135deg, #0c290c 0%, #134213 100%); }
         .pinpad-card.mr-robot .pinpad-preview { background: linear-gradient(135deg, #0a0a0a 0%, #001400 100%); }
+        .pinpad-card.nostromo .pinpad-preview { background: linear-gradient(135deg, #1a1208 0%, #2a1a08 100%); }
+        .pinpad-card.wargames .pinpad-preview { background: linear-gradient(135deg, #0a0800 0%, #1a1200 100%); }
+        .pinpad-card.deusex .pinpad-preview { background: linear-gradient(135deg, #0a0a0a 0%, #1a1508 100%); }
+        .pinpad-card.deadspace .pinpad-preview { background: linear-gradient(135deg, #050a10 0%, #0a1520 100%); }
+        .pinpad-card.tron .pinpad-preview { background: linear-gradient(135deg, #000508 0%, #001015 100%); }
 
         .pinpad-preview img {
             width: 100%;
@@ -142,6 +157,11 @@
         .pinpad-card.thermal .placeholder-icon { color: var(--text-cyan); }
         .pinpad-card.sevastolink .placeholder-icon { color: var(--seegson-green); }
         .pinpad-card.mr-robot .placeholder-icon { color: var(--phosphor-green); }
+        .pinpad-card.nostromo .placeholder-icon { color: var(--nostromo-amber); }
+        .pinpad-card.wargames .placeholder-icon { color: var(--wargames-amber); }
+        .pinpad-card.deusex .placeholder-icon { color: var(--deusex-gold); }
+        .pinpad-card.deadspace .placeholder-icon { color: var(--deadspace-blue); }
+        .pinpad-card.tron .placeholder-icon { color: var(--tron-cyan); }
 
         .pinpad-info {
             padding: 24px;
@@ -157,6 +177,11 @@
         .pinpad-card.thermal .pinpad-info h3 { color: var(--text-cyan); }
         .pinpad-card.sevastolink .pinpad-info h3 { color: var(--seegson-green); }
         .pinpad-card.mr-robot .pinpad-info h3 { color: var(--phosphor-green); }
+        .pinpad-card.nostromo .pinpad-info h3 { color: var(--nostromo-amber); }
+        .pinpad-card.wargames .pinpad-info h3 { color: var(--wargames-amber); }
+        .pinpad-card.deusex .pinpad-info h3 { color: var(--deusex-gold); }
+        .pinpad-card.deadspace .pinpad-info h3 { color: var(--deadspace-blue); }
+        .pinpad-card.tron .pinpad-info h3 { color: var(--tron-cyan); }
 
         .pinpad-info .source {
             font-size: 0.75rem;
@@ -194,6 +219,11 @@
         .pinpad-card.thermal .features li::before { color: var(--text-cyan); }
         .pinpad-card.sevastolink .features li::before { color: var(--seegson-green); }
         .pinpad-card.mr-robot .features li::before { color: var(--phosphor-green); }
+        .pinpad-card.nostromo .features li::before { color: var(--nostromo-amber); }
+        .pinpad-card.wargames .features li::before { color: var(--wargames-amber); }
+        .pinpad-card.deusex .features li::before { color: var(--deusex-gold); }
+        .pinpad-card.deadspace .features li::before { color: var(--deadspace-blue); }
+        .pinpad-card.tron .features li::before { color: var(--tron-cyan); }
 
         .demo-btn {
             display: block;
@@ -221,6 +251,31 @@
 
         .pinpad-card.mr-robot .demo-btn {
             background: linear-gradient(135deg, #008020 0%, var(--phosphor-green) 100%);
+            color: #000;
+        }
+
+        .pinpad-card.nostromo .demo-btn {
+            background: linear-gradient(135deg, #996600 0%, var(--nostromo-amber) 100%);
+            color: #000;
+        }
+
+        .pinpad-card.wargames .demo-btn {
+            background: linear-gradient(135deg, #996600 0%, var(--wargames-amber) 100%);
+            color: #000;
+        }
+
+        .pinpad-card.deusex .demo-btn {
+            background: linear-gradient(135deg, #8B7020 0%, var(--deusex-gold) 100%);
+            color: #000;
+        }
+
+        .pinpad-card.deadspace .demo-btn {
+            background: linear-gradient(135deg, #006080 0%, var(--deadspace-blue) 100%);
+            color: #000;
+        }
+
+        .pinpad-card.tron .demo-btn {
+            background: linear-gradient(135deg, #008080 0%, var(--tron-cyan) 100%);
             color: #000;
         }
 
@@ -319,7 +374,7 @@
     <header class="header">
         <h1>Pinpad</h1>
         <p class="subtitle">Movie & Game Keypad Effects</p>
-        <p class="tagline">Authentic recreations of iconic keypad interfaces from Splinter Cell, Alien: Isolation, and Mr. Robot — built for web, embedded Linux, and bare-metal ARM</p>
+        <p class="tagline">Authentic recreations of 8 iconic keypad interfaces from Splinter Cell, Alien, Mr. Robot, WarGames, Deus Ex, Dead Space, and Tron — built for web, embedded Linux, and bare-metal ARM</p>
     </header>
 
     <main class="container">
@@ -388,6 +443,111 @@
                         <a href="demos/mr-robot-pinpad.html" class="demo-btn">▶ Try Demo</a>
                     </div>
                 </div>
+
+                <div class="pinpad-card nostromo">
+                    <div class="pinpad-preview">
+                        <img src="screenshots/nostromo-pinpad-js.png" alt="Alien Nostromo Keypad" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="placeholder" style="display: none; flex-direction: column;">
+                            <div class="placeholder-icon">🚀</div>
+                            <span class="placeholder-text">Nostromo Interface</span>
+                        </div>
+                    </div>
+                    <div class="pinpad-info">
+                        <p class="source">Alien (1979)</p>
+                        <h3>Nostromo Keypad</h3>
+                        <p class="description">Industrial keypad from the USCSS Nostromo. Amber CRT, grime overlay, and 70s sci-fi authenticity.</p>
+                        <ul class="features">
+                            <li>Pulsing indicator glow</li>
+                            <li>Deterministic grime texture</li>
+                            <li>3D button depth</li>
+                        </ul>
+                        <a href="demos/nostromo-pinpad.html" class="demo-btn">▶ Try Demo</a>
+                    </div>
+                </div>
+
+                <div class="pinpad-card wargames">
+                    <div class="pinpad-preview">
+                        <img src="screenshots/wargames-pinpad-js.png" alt="WarGames NORAD Terminal" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="placeholder" style="display: none; flex-direction: column;">
+                            <div class="placeholder-icon">💻</div>
+                            <span class="placeholder-text">WOPR Terminal</span>
+                        </div>
+                    </div>
+                    <div class="pinpad-info">
+                        <p class="source">WarGames (1983)</p>
+                        <h3>NORAD Terminal</h3>
+                        <p class="description">The iconic WOPR terminal. CRT curvature, phosphor bloom, and "Shall we play a game?" nostalgia.</p>
+                        <ul class="features">
+                            <li>CRT barrel distortion</li>
+                            <li>Screen flicker effect</li>
+                            <li>Interactive command mode</li>
+                        </ul>
+                        <a href="demos/wargames-pinpad.html" class="demo-btn">▶ Try Demo</a>
+                    </div>
+                </div>
+
+                <div class="pinpad-card deusex">
+                    <div class="pinpad-preview">
+                        <img src="screenshots/deusex-pinpad-js.png" alt="Deus Ex HR Keypad" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="placeholder" style="display: none; flex-direction: column;">
+                            <div class="placeholder-icon">🦿</div>
+                            <span class="placeholder-text">Augmented Interface</span>
+                        </div>
+                    </div>
+                    <div class="pinpad-info">
+                        <p class="source">Deus Ex: Human Revolution (2011)</p>
+                        <h3>Sarif Industries Keypad</h3>
+                        <p class="description">Transhumanist holographic interface. Gold accents, boot sequence, and cyber-renaissance aesthetic.</p>
+                        <ul class="features">
+                            <li>Boot scan animation</li>
+                            <li>Holographic glow layers</li>
+                            <li>CSS timing variables</li>
+                        </ul>
+                        <a href="demos/deusex-pinpad.html" class="demo-btn">▶ Try Demo</a>
+                    </div>
+                </div>
+
+                <div class="pinpad-card deadspace">
+                    <div class="pinpad-preview">
+                        <img src="screenshots/deadspace-pinpad-js.png" alt="Dead Space RIG Interface" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="placeholder" style="display: none; flex-direction: column;">
+                            <div class="placeholder-icon">⚔️</div>
+                            <span class="placeholder-text">RIG Interface</span>
+                        </div>
+                    </div>
+                    <div class="pinpad-info">
+                        <p class="source">Dead Space (2008)</p>
+                        <h3>USG Ishimura Keypad</h3>
+                        <p class="description">Holographic survival horror interface. Chromatic aberration, instability effects, and deep space isolation.</p>
+                        <ul class="features">
+                            <li>72% holographic transparency</li>
+                            <li>Edge chromatic aberration</li>
+                            <li>Instability glitch decay</li>
+                        </ul>
+                        <a href="demos/deadspace-pinpad.html" class="demo-btn">▶ Try Demo</a>
+                    </div>
+                </div>
+
+                <div class="pinpad-card tron">
+                    <div class="pinpad-preview">
+                        <img src="screenshots/tron-pinpad-js.png" alt="Tron Keypad" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="placeholder" style="display: none; flex-direction: column;">
+                            <div class="placeholder-icon">💠</div>
+                            <span class="placeholder-text">Grid Interface</span>
+                        </div>
+                    </div>
+                    <div class="pinpad-info">
+                        <p class="source">Tron (1982)</p>
+                        <h3>ENCOM Grid Keypad</h3>
+                        <p class="description">Self-illuminated circuits from the digital frontier. Dual flicker, circuit pulse, and the classic light cycle aesthetic.</p>
+                        <ul class="features">
+                            <li>Dual overlapping flicker</li>
+                            <li>Circuit trace pulse</li>
+                            <li>Multi-layer bloom</li>
+                        </ul>
+                        <a href="demos/tron-pinpad.html" class="demo-btn">▶ Try Demo</a>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -428,7 +588,7 @@
     </main>
 
     <footer class="footer">
-        <p>Built with ❤️ for embedded developers • Inspired by <a href="https://splintercell.fandom.com/wiki/Thermal_vision" target="_blank">Splinter Cell</a>, <a href="https://www.alienisolation.com/" target="_blank">Alien: Isolation</a>, and <a href="https://www.usanetwork.com/mrrobot" target="_blank">Mr. Robot</a></p>
+        <p>Built with ❤️ for embedded developers • Inspired by <a href="https://splintercell.fandom.com/wiki/Thermal_vision" target="_blank">Splinter Cell</a>, <a href="https://www.alienisolation.com/" target="_blank">Alien</a>, <a href="https://www.usanetwork.com/mrrobot" target="_blank">Mr. Robot</a>, <a href="https://www.imdb.com/title/tt0086567/" target="_blank">WarGames</a>, <a href="https://www.eidosmontreal.com/games/deus-ex-human-revolution/" target="_blank">Deus Ex</a>, <a href="https://www.ea.com/games/dead-space" target="_blank">Dead Space</a>, and <a href="https://movies.disney.com/tron" target="_blank">Tron</a></p>
     </footer>
 </body>
 </html>

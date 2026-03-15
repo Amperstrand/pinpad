@@ -210,9 +210,10 @@ pub const ALERT_RED: Rgb888 = Rgb888::new(255, 51, 0);
 
 - [x] Research complete
 - [x] Specification written
-- [ ] JavaScript implementation
-- [ ] Python implementation
-- [ ] Rust implementation
+- [x] JavaScript implementation
+- [x] Python implementation
+- [x] Rust implementation
+- [x] Screenshots captured
 
 ---
 

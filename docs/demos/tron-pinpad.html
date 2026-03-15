@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tron (1982) Control Panel</title>
+    <style>
+        :root {
+            --neon-blue: #2AD2FF;
+            --neon-orange: #FF9D00;
+            --neon-white: #E0F7FF;
+            --deep-black: #030504;
+            --grid-cyan: #008CA3;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            font-family: "Eurostile", "Microgramma", "OCR A Std", monospace;
+            color: var(--neon-blue);
+            background:
+                radial-gradient(circle at 12% 8%, rgba(42, 210, 255, 0.09), transparent 38%),
+                radial-gradient(circle at 84% 88%, rgba(0, 140, 163, 0.1), transparent 42%),
+                linear-gradient(180deg, #020302, var(--deep-black) 50%, #010202);
+        }
+
+        .tron-panel {
+            width: min(96vw, 430px);
+            padding: 18px 18px 22px;
+            border: 1px solid rgba(42, 210, 255, 0.7);
+            position: relative;
+            overflow: hidden;
+            animation: 
+                power-on 0.6s ease-out forwards,
+                panel-flicker-primary 0.11s infinite steps(1, end) 0.6s,
+                panel-flicker-secondary 0.17s infinite steps(1, end) 0.6s;
+            background:
+                linear-gradient(180deg, rgba(3, 5, 4, 0.92), rgba(0, 12, 15, 0.84)),
+                repeating-linear-gradient(
+                    90deg,
+                    rgba(42, 210, 255, 0.03) 0px,
+                    rgba(42, 210, 255, 0.03) 2px,
+                    transparent 2px,
+                    transparent 8px
+                );
+            box-shadow: 
+                inset 0 0 60px rgba(42, 210, 255, 0.04),
+                0 0 40px rgba(42, 210, 255, 0.08);
+        }
+
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--grid-cyan);
+            margin-bottom: 12px;
+        }
+
+        .display {
+            border: 1px solid rgba(42, 210, 255, 0.72);
+            min-height: 94px;
+            padding: 12px;
+            margin-bottom: 14px;
+            position: relative;
+            overflow: hidden;
+            background:
+                linear-gradient(180deg, rgba(42, 210, 255, 0.1), rgba(0, 0, 0, 0.4)),
+                radial-gradient(ellipse at 50% 0%, rgba(42, 210, 255, 0.12) 0%, transparent 60%),
+                rgba(2, 9, 11, 0.9);
+            box-shadow: inset 0 0 30px rgba(42, 210, 255, 0.08);
+        }
+
+        .display::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: 
+                repeating-linear-gradient(
+                    0deg,
+                    rgba(224, 247, 255, 0.06) 0px,
+                    rgba(224, 247, 255, 0.06) 1px,
+                    transparent 1px,
+                    transparent 3px
+                ),
+                repeating-linear-gradient(
+                    90deg,
+                    rgba(42, 210, 255, 0.02) 0px,
+                    rgba(42, 210, 255, 0.02) 1px,
+                    transparent 1px,
+                    transparent 2px
+                );
+        }
+
+        .status {
+            font-size: 11px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--grid-cyan);
+            margin-bottom: 8px;
+        }
+
+        .code {
+            min-height: 34px;
+            font-size: 30px;
+            letter-spacing: 8px;
+            color: var(--neon-white);
+            text-shadow: 0 0 12px rgba(224, 247, 255, 0.9), 0 0 24px rgba(42, 210, 255, 0.6);
+        }
+
+        .hint {
+            margin-top: 8px;
+            font-size: 11px;
+            letter-spacing: 1px;
+            color: rgba(42, 210, 255, 0.9);
+        }
+
+        .traces {
+            position: relative;
+            height: 70px;
+            margin-bottom: 12px;
+        }
+
+        .trace {
+            position: absolute;
+            background: linear-gradient(90deg, rgba(42, 210, 255, 0), rgba(42, 210, 255, 0.9), rgba(42, 210, 255, 0));
+            animation: circuit-pulse 1.8s ease-in-out infinite;
+        }
+
+        .trace.h { height: 2px; }
+        .trace.v { width: 2px; background: linear-gradient(180deg, rgba(42, 210, 255, 0), rgba(42, 210, 255, 0.9), rgba(42, 210, 255, 0)); }
+        .trace.d { height: 2px; transform-origin: left center; }
+
+        .node {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            border: 1px solid rgba(42, 210, 255, 0.85);
+            background: rgba(224, 247, 255, 0.75);
+            animation: node-glow 2.2s ease-in-out infinite;
+        }
+
+        .keys {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .key {
+            --bloom-strength: 0.9;
+            border: 1px solid rgba(42, 210, 255, 0.95);
+            color: var(--neon-white);
+            background: rgba(2, 13, 16, 0.88);
+            clip-path: polygon(12% 0%, 88% 0%, 100% 20%, 100% 80%, 88% 100%, 12% 100%, 0% 80%, 0% 20%);
+            height: 70px;
+            font-size: 30px;
+            font-weight: 700;
+            position: relative;
+            cursor: pointer;
+            isolation: isolate;
+            transition: transform 80ms linear;
+        }
+
+        .key::before {
+            content: "";
+            position: absolute;
+            inset: -18%;
+            z-index: -1;
+            background: radial-gradient(circle, rgba(42, 210, 255, calc(0.55 * var(--bloom-strength))) 0%, rgba(42, 210, 255, calc(0.35 * var(--bloom-strength))) 40%, rgba(42, 210, 255, 0) 75%);
+            filter: blur(10px);
+            pointer-events: none;
+        }
+
+        .key::after {
+            content: "";
+            position: absolute;
+            inset: 14% 17%;
+            background: radial-gradient(circle at 50% 50%, rgba(224, 247, 255, 1) 0%, rgba(224, 247, 255, 0.85) 30%, rgba(224, 247, 255, 0.08) 100%);
+            clip-path: polygon(10% 0%, 90% 0%, 100% 25%, 100% 75%, 90% 100%, 10% 100%, 0% 75%, 0% 25%);
+            pointer-events: none;
+        }
+
+        .key:hover { --bloom-strength: 1; }
+        .key:active { transform: scale(0.985); }
+        .key:focus-visible {
+            outline: 1px solid var(--neon-orange);
+            outline-offset: 2px;
+        }
+
+        .key.flash {
+            --bloom-strength: 1.15;
+            border-color: var(--neon-white);
+            color: #ffffff;
+        }
+
+        .status.ok { color: var(--neon-white); }
+        .status.error { color: var(--neon-orange); }
+
+        @keyframes panel-flicker-primary {
+            0%, 100% { opacity: 0.92; }
+            25% { opacity: 0.98; }
+            50% { opacity: 0.94; }
+            75% { opacity: 1; }
+        }
+
+        @keyframes panel-flicker-secondary {
+            0%, 100% { opacity: 1; }
+            33% { opacity: 0.96; }
+            66% { opacity: 0.91; }
+        }
+
+        @keyframes circuit-pulse {
+            0%, 100% { opacity: 0.65; }
+            50% { opacity: 0.85; }
+        }
+
+        @keyframes node-glow {
+            0%, 100% { 
+                background: rgba(224, 247, 255, 0.75);
+                box-shadow: 0 0 4px rgba(42, 210, 255, 0.8);
+            }
+            50% { 
+                background: rgba(224, 247, 255, 0.95);
+                box-shadow: 0 0 8px rgba(42, 210, 255, 1);
+            }
+        }
+
+        @keyframes power-on {
+            0% { opacity: 0; filter: brightness(0.3); }
+            40% { opacity: 0.6; filter: brightness(0.7); }
+            70% { opacity: 0.9; filter: brightness(1.1); }
+            100% { opacity: 1; filter: brightness(1); }
+        }
+
+        @media (max-width: 480px) {
+            .tron-panel { padding: 14px 14px 18px; }
+            .key { height: 64px; font-size: 26px; }
+            .code { font-size: 24px; letter-spacing: 6px; }
+        }
+    </style>
+</head>
+<body>
+    <main class="tron-panel" aria-label="Tron control keypad">
+        <div class="hud">
+            <span>ENCOM GRID I/O</span>
+            <span>MCP BUS 12</span>
+        </div>
+
+        <section class="display" aria-live="polite">
+            <div class="status" id="statusText">Awaiting command</div>
+            <div class="code" id="maskedCode"></div>
+            <div class="hint">Keys: 0-9, C/Backspace clear, E/Enter submit</div>
+        </section>
+
+        <div class="traces" aria-hidden="true">
+            <span class="trace h" style="left: 8px; top: 8px; width: 120px;"></span>
+            <span class="trace d" style="left: 128px; top: 8px; width: 42px; transform: rotate(45deg);"></span>
+            <span class="trace v" style="left: 171px; top: 36px; height: 22px;"></span>
+            <span class="trace h" style="left: 173px; top: 58px; width: 182px;"></span>
+            <span class="trace d" style="left: 264px; top: 58px; width: 36px; transform: rotate(-45deg);"></span>
+            <span class="trace v" style="left: 299px; top: 34px; height: 24px;"></span>
+            <span class="node" style="left: 124px; top: 5px;"></span>
+            <span class="node" style="left: 168px; top: 56px;"></span>
+            <span class="node" style="left: 296px; top: 30px;"></span>
+        </div>
+
+        <div class="keys" id="keys"></div>
+    </main>
+
+    <script>
+        (() => {
+            "use strict";
+
+            const COLORS = {
+                neonBlue: "#2AD2FF",
+                neonOrange: "#FF9D00",
+                neonWhite: "#E0F7FF",
+                deepBlack: "#030504",
+                gridCyan: "#008CA3",
+            };
+
+            const BUTTONS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "E"];
+            const MAX_DIGITS = 4;
+            const CORRECT_CODE = "1982";
+            const FLASH_MS = 110;
+            const VERIFY_MS = 360;
+
+            const statusText = document.getElementById("statusText");
+            const maskedCode = document.getElementById("maskedCode");
+            const keysRoot = document.getElementById("keys");
+
+            const keyEls = new Map();
+            let input = "";
+            let busy = false;
+
+            function setStatus(text, kind = "") {
+                statusText.textContent = text;
+                statusText.className = `status ${kind}`.trim();
+            }
+
+            function refreshMask() {
+                maskedCode.textContent = input.replace(/./g, "*");
+            }
+
+            function flashKey(label) {
+                const el = keyEls.get(label);
+                if (!el) {
+                    return;
+                }
+                el.classList.remove("flash");
+                void el.offsetWidth;
+                el.classList.add("flash");
+                window.setTimeout(() => el.classList.remove("flash"), FLASH_MS);
+            }
+
+            function submit() {
+                if (input.length === 0) {
+                    setStatus("No signal", "error");
+                    return;
+                }
+
+                busy = true;
+                setStatus("Routing packet...");
+                window.setTimeout(() => {
+                    if (input === CORRECT_CODE) {
+                        setStatus("Access granted", "ok");
+                    } else {
+                        setStatus("Access denied", "error");
+                        input = "";
+                        refreshMask();
+                    }
+                    busy = false;
+                }, VERIFY_MS);
+            }
+
+            function press(label) {
+                if (busy) {
+                    return;
+                }
+                flashKey(label);
+
+                if (/^[0-9]$/.test(label)) {
+                    if (input.length < MAX_DIGITS) {
+                        input += label;
+                        refreshMask();
+                        setStatus("Digit latched");
+                    }
+                    return;
+                }
+
+                if (label === "C") {
+                    input = "";
+                    refreshMask();
+                    setStatus("Input cleared");
+                    return;
+                }
+
+                if (label === "E") {
+                    submit();
+                }
+            }
+
+            function onKeydown(event) {
+                const key = event.key;
+                if (/^[0-9]$/.test(key)) {
+                    event.preventDefault();
+                    press(key);
+                    return;
+                }
+
+                if (key === "Backspace" || key.toLowerCase() === "c") {
+                    event.preventDefault();
+                    press("C");
+                    return;
+                }
+
+                if (key === "Enter" || key.toLowerCase() === "e") {
+                    event.preventDefault();
+                    press("E");
+                }
+            }
+
+            function createKeys() {
+                BUTTONS.forEach((label) => {
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.className = "key";
+                    button.textContent = label;
+                    button.setAttribute("aria-label", `Key ${label}`);
+                    button.addEventListener("click", () => press(label));
+                    keysRoot.appendChild(button);
+                    keyEls.set(label, button);
+                });
+            }
+
+            createKeys();
+            refreshMask();
+            window.addEventListener("keydown", onKeydown);
+
+            window.TRON_COLORS = COLORS;
+        })();
+    </script>
+</body>
+</html>

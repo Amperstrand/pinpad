@@ -187,10 +187,10 @@ Implementation should achieve:
 
 - [x] Research complete
 - [x] Specification written
-- [ ] JavaScript implementation
-- [ ] Python implementation
-- [ ] Rust implementation
-- [ ] Screenshots captured
+- [x] JavaScript implementation
+- [x] Python implementation
+- [x] Rust implementation
+- [x] Screenshots captured
 
 ---
 

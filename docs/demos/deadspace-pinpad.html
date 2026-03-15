@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dead Space RIG Hologram</title>
+    <style>
+        :root {
+            --primary-cyan: #00FFFF;
+            --deep-blue: #0047AB;
+            --health-teal: #00FFCC;
+            --stasis-blue: #3399FF;
+            --alert-red: #FF3300;
+            --text-blue: #A0E6FF;
+            --holo-opacity: 0.72;
+            --scanline-dark: 0.08;
+            --jitter-x: 0px;
+            --jitter-y: 0px;
+            --aberr-r-x: -2px;
+            --aberr-r-y: 0px;
+            --aberr-c-x: 0px;
+            --aberr-c-y: 0px;
+            --aberr-b-x: 2px;
+            --aberr-b-y: 1px;
+            --volumetric-pulse: 0.55;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            background:
+                radial-gradient(circle at 20% 10%, rgba(0, 71, 171, 0.35), transparent 35%),
+                radial-gradient(circle at 80% 90%, rgba(0, 255, 255, 0.18), transparent 35%),
+                linear-gradient(140deg, #040912, #02050b 60%, #050b14);
+            color: var(--text-blue);
+            font-family: "Orbitron", "BankGothic Md BT", "Eurostile", monospace;
+            padding: 20px;
+        }
+
+        .rig-shell {
+            width: min(92vw, 760px);
+            border: 1px solid rgba(0, 255, 255, 0.35);
+            background: rgba(0, 71, 171, 0.12);
+            box-shadow:
+                0 0 40px rgba(0, 255, 255, 0.2),
+                inset 0 0 38px rgba(0, 255, 255, 0.08);
+            backdrop-filter: blur(2px);
+            opacity: var(--holo-opacity);
+            border-radius: 16px;
+            overflow: hidden;
+            position: relative;
+            transform: translate(var(--jitter-x), var(--jitter-y));
+        }
+
+        .rig-shell::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(
+                to bottom,
+                rgba(0, 0, 0, var(--scanline-dark)) 0px,
+                rgba(0, 0, 0, var(--scanline-dark)) 1px,
+                rgba(0, 255, 255, 0.01) 2px,
+                rgba(0, 255, 255, 0.01) 4px
+            );
+            pointer-events: none;
+            mix-blend-mode: multiply;
+        }
+
+        .rig-shell::after {
+            content: "";
+            position: absolute;
+            inset: -2px;
+            pointer-events: none;
+            border-radius: 16px;
+            box-shadow:
+                var(--aberr-r-x) var(--aberr-r-y) 0 rgba(255, 51, 0, 0.20),
+                var(--aberr-c-x) var(--aberr-c-y) 0 rgba(0, 255, 255, 0.24),
+                var(--aberr-b-x) var(--aberr-b-y) 0 rgba(51, 153, 255, 0.2),
+                0 0 calc(38px + 16px * var(--volumetric-pulse)) rgba(0, 255, 255, 0.2),
+                inset 0 0 calc(26px + 10px * var(--volumetric-pulse)) rgba(0, 71, 171, 0.28);
+        }
+
+        .header {
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(0, 255, 255, 0.24);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            letter-spacing: 1.5px;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .header .mode {
+            color: var(--stasis-blue);
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 1.1fr 1fr;
+            gap: 18px;
+            padding: 18px;
+        }
+
+        .status-panel,
+        .inventory-panel {
+            border: 1px solid rgba(0, 255, 255, 0.24);
+            background: rgba(0, 20, 36, 0.35);
+            border-radius: 12px;
+            padding: 14px;
+        }
+
+        .panel-title {
+            font-size: 11px;
+            color: var(--text-blue);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+        }
+
+        .gauge {
+            margin-bottom: 12px;
+        }
+
+        .gauge-top {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            margin-bottom: 6px;
+        }
+
+        .bar {
+            height: 10px;
+            border: 1px solid rgba(0, 255, 255, 0.4);
+            border-radius: 8px;
+            overflow: hidden;
+            background: rgba(0, 71, 171, 0.2);
+        }
+
+        .bar-fill {
+            height: 100%;
+            width: 0;
+            transition: width 150ms linear;
+        }
+
+        .health-fill {
+            background: linear-gradient(90deg, var(--alert-red), var(--health-teal));
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.7);
+        }
+
+        .stasis-fill {
+            background: linear-gradient(90deg, var(--deep-blue), var(--stasis-blue));
+            box-shadow: 0 0 8px rgba(51, 153, 255, 0.7);
+        }
+
+        #inventoryGrid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 9px;
+        }
+
+        .slot {
+            aspect-ratio: 1;
+            border: 1px solid rgba(0, 255, 255, 0.35);
+            border-radius: 10px;
+            background: rgba(0, 255, 255, 0.06);
+            display: grid;
+            place-items: center;
+            font-size: 15px;
+            color: rgba(160, 230, 255, 0.8);
+            text-shadow: 0 0 8px rgba(0, 255, 255, 0.4);
+            transition: 100ms linear;
+        }
+
+        .slot.selected {
+            border-color: var(--primary-cyan);
+            box-shadow:
+                0 0 14px rgba(0, 255, 255, 0.7),
+                inset 0 0 12px rgba(0, 255, 255, 0.25);
+            background: rgba(0, 255, 255, 0.2);
+            color: #ffffff;
+        }
+
+        .footer {
+            padding: 10px 18px 16px;
+            font-size: 11px;
+            color: rgba(160, 230, 255, 0.9);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        @media (max-width: 700px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="rig-shell" id="rigShell">
+        <div class="header">
+            <span>USG ISHIMURA / RIG HOLO-UI</span>
+            <span class="mode" id="modeLabel">STABLE LINK</span>
+        </div>
+        <div class="layout">
+            <section class="status-panel">
+                <h2 class="panel-title">Status Projection</h2>
+                <div class="gauge">
+                    <div class="gauge-top"><span>HEALTH</span><span id="healthText">82%</span></div>
+                    <div class="bar"><div class="bar-fill health-fill" id="healthFill"></div></div>
+                </div>
+                <div class="gauge">
+                    <div class="gauge-top"><span>STASIS</span><span id="stasisText">61%</span></div>
+                    <div class="bar"><div class="bar-fill stasis-fill" id="stasisFill"></div></div>
+                </div>
+                <div class="gauge-top"><span>OBJECTIVE</span><span>DECK B2</span></div>
+            </section>
+            <section class="inventory-panel">
+                <h2 class="panel-title">Inventory Grid 4x4</h2>
+                <div id="inventoryGrid"></div>
+            </section>
+        </div>
+        <div class="footer" id="footerText">ARROWS/WASD MOVE | ENTER INTERACT | SPACE GLITCH PING</div>
+    </div>
+
+    <script>
+        (() => {
+            "use strict";
+
+            const COLORS = {
+                primaryCyan: "#00FFFF",
+                deepBlue: "#0047AB",
+                healthTeal: "#00FFCC",
+                stasisBlue: "#3399FF",
+                alertRed: "#FF3300",
+                textBlue: "#A0E6FF"
+            };
+
+            const GRID_ROWS = 4;
+            const GRID_COLS = 4;
+            const SLOT_COUNT = GRID_ROWS * GRID_COLS;
+            const EFFECTS = {
+                holoOpacity: 0.72,
+                scanlineDark: 0.08,
+                chromaticOffsetPx: 2,
+                jitterMinPx: 1,
+                jitterMaxPx: 2
+            };
+            const rigShell = document.getElementById("rigShell");
+            const inventoryGrid = document.getElementById("inventoryGrid");
+            const footerText = document.getElementById("footerText");
+            const modeLabel = document.getElementById("modeLabel");
+            const healthFill = document.getElementById("healthFill");
+            const stasisFill = document.getElementById("stasisFill");
+            const healthText = document.getElementById("healthText");
+            const stasisText = document.getElementById("stasisText");
+
+            const glyphs = ["--", "PL", "SM", "TK", "ST", "NO", "MD", "AT", "SE", "BA", "EN", "RG", "MP", "HL", "DM", "RX"];
+            const slots = [];
+            let selectedIndex = 0;
+            let health = 82;
+            let stasis = 61;
+            let unstableFrames = 0;
+
+            document.documentElement.style.setProperty("--holo-opacity", `${EFFECTS.holoOpacity}`);
+            document.documentElement.style.setProperty("--scanline-dark", `${EFFECTS.scanlineDark}`);
+
+            function initGrid() {
+                for (let i = 0; i < SLOT_COUNT; i += 1) {
+                    const slot = document.createElement("button");
+                    slot.type = "button";
+                    slot.className = "slot";
+                    slot.textContent = glyphs[i];
+                    slot.tabIndex = -1;
+                    slot.setAttribute("aria-label", `Inventory slot ${i + 1}`);
+                    inventoryGrid.appendChild(slot);
+                    slots.push(slot);
+                }
+                updateSelection();
+            }
+
+            function updateSelection() {
+                slots.forEach((slot, idx) => {
+                    slot.classList.toggle("selected", idx === selectedIndex);
+                });
+                footerText.textContent = `SELECTED SLOT ${selectedIndex + 1} / ${glyphs[selectedIndex]} | ARROWS/WASD MOVE | ENTER INTERACT | SPACE GLITCH PING`;
+            }
+
+            function stepSelection(dx, dy) {
+                const row = Math.floor(selectedIndex / GRID_COLS);
+                const col = selectedIndex % GRID_COLS;
+                const nextRow = (row + dy + GRID_ROWS) % GRID_ROWS;
+                const nextCol = (col + dx + GRID_COLS) % GRID_COLS;
+                selectedIndex = nextRow * GRID_COLS + nextCol;
+                updateSelection();
+            }
+
+            function interact() {
+                modeLabel.textContent = `SYNC ${glyphs[selectedIndex]}`;
+                modeLabel.style.color = COLORS.primaryCyan;
+                health = Math.max(18, Math.min(100, health + Math.round((Math.random() - 0.5) * 6)));
+                stasis = Math.max(10, Math.min(100, stasis + Math.round((Math.random() - 0.4) * 8)));
+                renderGauges();
+            }
+
+            function glitchPing() {
+                modeLabel.textContent = "HOLO DESYNC";
+                modeLabel.style.color = COLORS.alertRed;
+                unstableFrames = 48;
+                for (let i = 0; i < 14; i += 1) {
+                    setTimeout(applyJitter, i * 22);
+                }
+            }
+
+            function renderGauges() {
+                healthFill.style.width = `${health}%`;
+                stasisFill.style.width = `${stasis}%`;
+                healthText.textContent = `${health}%`;
+                stasisText.textContent = `${stasis}%`;
+            }
+
+            function applyChromaticAberration() {
+                const edge = EFFECTS.chromaticOffsetPx;
+                const drift = (Math.random() - 0.5) * 0.8;
+                rigShell.style.setProperty("--aberr-r-x", `${(-edge + drift).toFixed(2)}px`);
+                rigShell.style.setProperty("--aberr-r-y", `${(drift * 0.5).toFixed(2)}px`);
+                rigShell.style.setProperty("--aberr-c-x", `${(drift * 0.35).toFixed(2)}px`);
+                rigShell.style.setProperty("--aberr-c-y", `${(-drift * 0.3).toFixed(2)}px`);
+                rigShell.style.setProperty("--aberr-b-x", `${(edge + drift).toFixed(2)}px`);
+                rigShell.style.setProperty("--aberr-b-y", `${(1 - drift * 0.4).toFixed(2)}px`);
+            }
+
+            function randSigned(minMagnitude, maxMagnitude) {
+                const magnitude = minMagnitude + Math.random() * (maxMagnitude - minMagnitude);
+                return (Math.random() < 0.5 ? -1 : 1) * magnitude;
+            }
+
+            function applyJitter() {
+                const factor = unstableFrames > 0 ? 1.0 : 0.72;
+                const jx = randSigned(EFFECTS.jitterMinPx, EFFECTS.jitterMaxPx) * factor;
+                const jy = randSigned(EFFECTS.jitterMinPx, EFFECTS.jitterMaxPx) * factor;
+                rigShell.style.setProperty("--jitter-x", `${jx.toFixed(2)}px`);
+                rigShell.style.setProperty("--jitter-y", `${jy.toFixed(2)}px`);
+            }
+
+            function handleKeyDown(event) {
+                const key = event.key.toLowerCase();
+                if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d", "enter", " "].includes(key)) {
+                    event.preventDefault();
+                }
+
+                if (key === "arrowup" || key === "w") stepSelection(0, -1);
+                if (key === "arrowdown" || key === "s") stepSelection(0, 1);
+                if (key === "arrowleft" || key === "a") stepSelection(-1, 0);
+                if (key === "arrowright" || key === "d") stepSelection(1, 0);
+                if (key === "enter") interact();
+                if (key === " ") glitchPing();
+            }
+
+            function animate() {
+                applyJitter();
+                applyChromaticAberration();
+                const pulse = 0.35 + Math.random() * 0.65;
+                rigShell.style.setProperty("--volumetric-pulse", pulse.toFixed(3));
+                if (unstableFrames > 0) {
+                    unstableFrames -= 1;
+                    if (unstableFrames === 0) {
+                        modeLabel.textContent = "STABLE LINK";
+                        modeLabel.style.color = COLORS.stasisBlue;
+                    }
+                }
+                requestAnimationFrame(animate);
+            }
+
+            initGrid();
+            renderGauges();
+            document.addEventListener("keydown", handleKeyDown);
+            requestAnimationFrame(animate);
+        })();
+    </script>
+</body>
+</html>
