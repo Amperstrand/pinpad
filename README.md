@@ -126,3 +126,6 @@ Read [prompts/INITIAL.md](prompts/INITIAL.md) for implementation requirements.
 ## License
 
 MIT
+
+> **STATUS: ARCHIVED EXPERIMENT (2026-09-04)** — agentic-AI development scaffold, no
+> completed implementation. Kept as a workflow artifact only.
