@@ -76,6 +76,19 @@
                 inset 0 0 60px rgba(0, 20, 0, 0.3);
         }
 
+        .container::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 5px;
+            pointer-events: none;
+            border: 1px solid rgba(0, 255, 65, 0.18);
+            box-shadow:
+                -1px 0 0 rgba(255, 60, 70, 0.2),
+                1px 0 0 rgba(120, 210, 255, 0.25);
+            mix-blend-mode: screen;
+        }
+
         /* ===========================================
            TERMINAL HEADER
            =========================================== */
@@ -111,6 +124,8 @@
             color: var(--phosphor-green);
             margin-bottom: 15px;
             min-height: 80px;
+            max-height: 140px;
+            overflow-y: auto;
             text-shadow: 0 0 5px var(--glow-green),
                          0 0 10px rgba(0, 255, 65, 0.3);
         }
@@ -329,7 +344,24 @@
                 CURSOR_BLINK_MS: 530,
                 TYPING_DELAY_MS: 30,
                 TYPING_VARIANCE_MS: 15,
-                TARGET_FPS: 60
+                TARGET_FPS: 60,
+                BUTTON_ACTIVE_MS: 150,
+
+                // Film grain settings
+                NOISE_POINTS: 800,
+                GRAIN_UPDATE_INTERVAL: 100, // ms (~10fps)
+
+                // Chromatic aberration for active edges
+                CHROMATIC_OFFSET: 2,
+
+                // Terminal behavior
+                TERMINAL_PROMPT: 'fsociety@fbi-target:~$',
+                MAX_TERMINAL_LINES: 14,
+
+                // Demo pacing
+                DEMO_INITIAL_DELAY_MS: 500,
+                DEMO_CYCLE_MS: 5000,
+                DEMO_SUBMIT_DELAY_MS: 240
             };
 
             // ===========================================
@@ -342,16 +374,22 @@
 
                 // Button states
                 buttonStates: new Map(), // 'pressed' timestamp or null
+                hoveredButton: null,
 
                 // Demo mode
                 demoMode: false,
                 demoInterval: null,
+                demoTimeouts: [],
 
                 // Animation
                 lastFrameTime: 0,
                 animationId: null,
                 cursorBlinkState: true,
                 lastCursorBlink: 0,
+
+                // Film grain cache (~10fps)
+                grainImageData: null,
+                lastGrainUpdate: 0,
 
                 // UI references
                 canvas: null,
@@ -395,6 +433,8 @@
             function setupEventListeners() {
                 // Canvas click handler
                 state.canvas.addEventListener('click', handleCanvasClick);
+                state.canvas.addEventListener('mousemove', handleCanvasMouseMove);
+                state.canvas.addEventListener('mouseleave', handleCanvasMouseLeave);
 
                 // Keyboard support
                 document.addEventListener('keydown', handleKeyPress);
@@ -403,6 +443,17 @@
                 document.getElementById('demoBtn').addEventListener('click', toggleDemoMode);
                 document.getElementById('resetBtn').addEventListener('click', resetAll);
                 document.getElementById('clearBtn').addEventListener('click', clearPin);
+            }
+
+            function handleCanvasMouseMove(event) {
+                const rect = state.canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                state.hoveredButton = getButtonAtPosition(x, y);
+            }
+
+            function handleCanvasMouseLeave() {
+                state.hoveredButton = null;
             }
 
             /**
@@ -424,18 +475,26 @@
              */
             function handleKeyPress(event) {
                 const key = event.key;
+                let consumed = false;
 
                 // Number keys
                 if (/^[0-9]$/.test(key)) {
                     pressButton(key);
+                    consumed = true;
                 }
                 // Enter key
                 else if (key === 'Enter') {
                     pressButton('E');
+                    consumed = true;
                 }
                 // Escape/Backspace for clear
                 else if (key === 'Escape' || key === 'Backspace') {
                     pressButton('C');
+                    consumed = true;
+                }
+
+                if (consumed) {
+                    event.preventDefault();
                 }
             }
 
@@ -489,6 +548,7 @@
                     if (state.enteredPin.length < CONFIG.MAX_PIN_LENGTH) {
                         state.enteredPin += label;
                         updatePinDisplay();
+                        addTerminalLine(`${CONFIG.TERMINAL_PROMPT} keytap ${label}`, 'prompt');
                     }
                 }
 
@@ -577,18 +637,19 @@
              */
             function startDemoSequence() {
                 // Enter a code immediately
-                setTimeout(() => {
+                const kickoffId = setTimeout(() => {
                     if (state.demoMode) {
                         enterDemoPin();
                     }
-                }, 500);
+                }, CONFIG.DEMO_INITIAL_DELAY_MS);
+                state.demoTimeouts.push(kickoffId);
 
                 // Then every 5 seconds
                 state.demoInterval = setInterval(() => {
                     if (state.demoMode) {
                         enterDemoPin();
                     }
-                }, 5000);
+                }, CONFIG.DEMO_CYCLE_MS);
             }
 
             /**
@@ -599,6 +660,11 @@
                     clearInterval(state.demoInterval);
                     state.demoInterval = null;
                 }
+
+                state.demoTimeouts.forEach(timeoutId => {
+                    clearTimeout(timeoutId);
+                });
+                state.demoTimeouts = [];
             }
 
             /**
@@ -608,18 +674,67 @@
                 const demoPins = ['1234', '0000', '9999', '1337'];
                 const pin = demoPins[Math.floor(Math.random() * demoPins.length)];
 
-                addTerminalLine(`[*] Demo: Entering PIN ${pin}`, 'status');
+                clearPin();
+                addTerminalLine('[*] Demo operator active', 'status');
 
-                pin.split('').forEach((digit, index) => {
-                    setTimeout(() => {
-                        pressButton(digit);
-                    }, index * 200);
+                typeTerminalCommand(`pinpad-auth --target ecorp --pin ${pin}`, () => {
+                    let elapsed = 0;
+                    pin.split('').forEach((digit) => {
+                        elapsed += getTypingDelayMs();
+                        const digitTimeout = setTimeout(() => {
+                            if (state.demoMode) {
+                                pressButton(digit);
+                            }
+                        }, elapsed);
+                        state.demoTimeouts.push(digitTimeout);
+                    });
+
+                    const submitTimeout = setTimeout(() => {
+                        if (state.demoMode) {
+                            pressButton('E');
+                        }
+                    }, elapsed + CONFIG.DEMO_SUBMIT_DELAY_MS);
+                    state.demoTimeouts.push(submitTimeout);
                 });
+            }
 
-                // Press enter after PIN
-                setTimeout(() => {
-                    pressButton('E');
-                }, pin.length * 200 + 300);
+            function getTypingDelayMs() {
+                const variance = Math.floor(Math.random() * (CONFIG.TYPING_VARIANCE_MS * 2 + 1)) - CONFIG.TYPING_VARIANCE_MS;
+                return CONFIG.TYPING_DELAY_MS + variance;
+            }
+
+            function typeTerminalCommand(command, onDone) {
+                const line = document.createElement('div');
+                line.className = 'line';
+
+                const promptSpan = document.createElement('span');
+                promptSpan.className = 'prompt';
+                promptSpan.textContent = `${CONFIG.TERMINAL_PROMPT} `;
+
+                const commandSpan = document.createElement('span');
+                commandSpan.className = 'command';
+                line.appendChild(promptSpan);
+                line.appendChild(commandSpan);
+
+                appendTerminalLine(line);
+
+                let index = 0;
+                function step() {
+                    if (index >= command.length) {
+                        if (onDone) {
+                            onDone();
+                        }
+                        return;
+                    }
+
+                    commandSpan.textContent += command[index];
+                    index += 1;
+
+                    const timeoutId = setTimeout(step, getTypingDelayMs());
+                    state.demoTimeouts.push(timeoutId);
+                }
+
+                step();
             }
 
             /**
@@ -629,6 +744,14 @@
                 const line = document.createElement('div');
                 line.className = `line ${className}`;
                 line.textContent = text;
+
+                appendTerminalLine(line);
+            }
+
+            function appendTerminalLine(line) {
+                if (state.terminalOutput.children.length >= CONFIG.MAX_TERMINAL_LINES) {
+                    state.terminalOutput.removeChild(state.terminalOutput.firstChild);
+                }
 
                 // Remove cursor from previous line
                 const cursor = state.terminalOutput.querySelector('.cursor');
@@ -722,6 +845,8 @@
                 CONFIG.BUTTONS.forEach((label, index) => {
                     drawButton(ctx, index, label);
                 });
+
+                drawFilmGrain(ctx, canvas);
             }
 
             /**
@@ -785,7 +910,13 @@
             function drawButton(ctx, index, label) {
                 const pos = getButtonPosition(index);
                 const pressTime = state.buttonStates.get(label);
-                const isPressed = pressTime !== null && (Date.now() - pressTime) < 150;
+                const now = Date.now();
+                const isPressed = pressTime !== null && (now - pressTime) < CONFIG.BUTTON_ACTIVE_MS;
+
+                if (pressTime !== null && (now - pressTime) >= CONFIG.BUTTON_ACTIVE_MS) {
+                    state.buttonStates.set(label, null);
+                }
+                const isHovered = state.hoveredButton === label;
 
                 // Button center for glow effect
                 const centerX = pos.x + CONFIG.BUTTON_WIDTH / 2;
@@ -797,13 +928,13 @@
                 }
 
                 // Draw button background
-                drawButtonBackground(ctx, pos, isPressed);
+                drawButtonBackground(ctx, pos, isPressed, isHovered);
 
                 // Draw button border
-                drawButtonBorder(ctx, pos, isPressed);
+                drawButtonBorder(ctx, pos, isPressed, isHovered);
 
                 // Draw button label
-                drawButtonLabel(ctx, pos, label, isPressed);
+                drawButtonLabel(ctx, pos, label, isPressed, isHovered);
             }
 
             /**
@@ -827,9 +958,11 @@
             /**
              * Draw button background
              */
-            function drawButtonBackground(ctx, pos, isPressed) {
+            function drawButtonBackground(ctx, pos, isPressed, isHovered) {
                 if (isPressed) {
                     ctx.fillStyle = 'rgba(0, 255, 65, 0.15)';
+                } else if (isHovered) {
+                    ctx.fillStyle = 'rgba(0, 255, 65, 0.09)';
                 } else {
                     ctx.fillStyle = 'rgba(0, 20, 0, 0.6)';
                 }
@@ -841,17 +974,40 @@
             /**
              * Draw button border
              */
-            function drawButtonBorder(ctx, pos, isPressed) {
-                ctx.strokeStyle = isPressed ? CONFIG.PHOSPHOR_GREEN : CONFIG.DIM_GREEN;
-                ctx.lineWidth = 1;
-                roundRect(ctx, pos.x, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
-                ctx.stroke();
+            function drawButtonBorder(ctx, pos, isPressed, isHovered) {
+                const isActive = isPressed || isHovered;
+
+                if (isActive) {
+                    const offset = CONFIG.CHROMATIC_OFFSET;
+                    const alpha = isPressed ? 0.45 : 0.3;
+
+                    // Red channel shifted left
+                    ctx.strokeStyle = `rgba(255, 60, 70, ${alpha * 0.45})`;
+                    ctx.lineWidth = 1;
+                    roundRect(ctx, pos.x - offset, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
+                    ctx.stroke();
+
+                    // Green channel centered (dominant phosphor)
+                    ctx.strokeStyle = `rgba(0, 255, 65, ${alpha})`;
+                    roundRect(ctx, pos.x, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
+                    ctx.stroke();
+
+                    // Blue channel shifted right
+                    ctx.strokeStyle = `rgba(120, 210, 255, ${alpha * 0.5})`;
+                    roundRect(ctx, pos.x + offset, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
+                    ctx.stroke();
+                } else {
+                    ctx.strokeStyle = CONFIG.DIM_GREEN;
+                    ctx.lineWidth = 1;
+                    roundRect(ctx, pos.x, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
+                    ctx.stroke();
+                }
             }
 
             /**
              * Draw button label
              */
-            function drawButtonLabel(ctx, pos, label, isPressed) {
+            function drawButtonLabel(ctx, pos, label, isPressed, isHovered) {
                 ctx.font = 'bold 18px "Meslo LG S Mono", Monaco, monospace';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
@@ -863,6 +1019,10 @@
                     ctx.fillStyle = CONFIG.PHOSPHOR_GREEN;
                     ctx.shadowColor = CONFIG.GLOW_GREEN;
                     ctx.shadowBlur = 10;
+                } else if (isHovered) {
+                    ctx.fillStyle = CONFIG.PHOSPHOR_GREEN;
+                    ctx.shadowColor = 'rgba(0, 255, 65, 0.35)';
+                    ctx.shadowBlur = 6;
                 } else {
                     ctx.fillStyle = CONFIG.PHOSPHOR_GREEN;
                     ctx.shadowBlur = 0;
@@ -875,6 +1035,45 @@
 
                 ctx.fillText(displayLabel, centerX, centerY);
                 ctx.shadowBlur = 0;
+            }
+
+            function drawFilmGrain(ctx, canvas) {
+                const now = performance.now();
+
+                if (!state.grainImageData || now - state.lastGrainUpdate >= CONFIG.GRAIN_UPDATE_INTERVAL) {
+                    state.grainImageData = generateFilmGrain(canvas);
+                    state.lastGrainUpdate = now;
+                }
+
+                if (state.grainImageData) {
+                    ctx.putImageData(state.grainImageData, 0, 0);
+                }
+            }
+
+            function generateFilmGrain(canvas) {
+                const imageData = state.ctx.createImageData(canvas.width, canvas.height);
+                const data = imageData.data;
+
+                for (let i = 0; i < data.length; i += 4) {
+                    data[i] = 0;
+                    data[i + 1] = 0;
+                    data[i + 2] = 0;
+                    data[i + 3] = 0;
+                }
+
+                for (let i = 0; i < CONFIG.NOISE_POINTS; i++) {
+                    const x = Math.floor(Math.random() * canvas.width);
+                    const y = Math.floor(Math.random() * canvas.height);
+                    const idx = (y * canvas.width + x) * 4;
+
+                    const glow = 18 + Math.floor(Math.random() * 28);
+                    data[idx] = 0;
+                    data[idx + 1] = Math.min(255, glow + 24);
+                    data[idx + 2] = Math.floor(glow * 0.35);
+                    data[idx + 3] = Math.floor(0.08 * 255);
+                }
+
+                return imageData;
             }
 
             /**

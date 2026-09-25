@@ -82,9 +82,9 @@
             background: repeating-linear-gradient(
                 0deg,
                 transparent,
-                transparent 2px,
-                rgba(0, 0, 0, 0.25) 2px,
-                rgba(0, 0, 0, 0.25) 4px
+                transparent 1px,
+                rgba(0, 0, 0, 0.35) 1px,
+                rgba(0, 0, 0, 0.35) 2px
             );
             pointer-events: none;
             z-index: 10;
@@ -224,7 +224,7 @@
         // Pure Vanilla JavaScript Implementation
         // ===========================================
 
-        (function() {
+        (() => {
             'use strict';
 
             // ===========================================
@@ -269,10 +269,13 @@
                 // Animation timing (milliseconds)
                 CURSOR_BLINK: 530,
                 KEYPRESS_FLASH: 150,
+                VERIFY_DELAY: 800,
                 SCREEN_FLICKER_MIN: 2000,
                 SCREEN_FLICKER_MAX: 4000,
+                SCREEN_FLICKER_DURATION: 100,
                 ERROR_FLASH: 250,
                 SUCCESS_FLASH: 400,
+                AUTH_CODE: '1234',
 
                 // CRT effects
                 SCANLINE_INTENSITY: 0.25,
@@ -314,6 +317,11 @@
                 // Animation
                 lastFrameTime: 0,
                 animationId: null,
+
+                // Cached film grain (regenerated at ~10fps)
+                cachedGrain: null,
+                lastGrainUpdate: 0,
+                GRAIN_UPDATE_INTERVAL: 100,  // 100ms = 10fps
 
                 // UI references
                 canvas: null,
@@ -363,10 +371,6 @@
                     pressButton('C');
                 } else if (key === 'ENTER') {
                     pressButton('E');
-                } else if (key === '*') {
-                    pressButton('*');
-                } else if (key === '#') {
-                    pressButton('#');
                 }
             }
 
@@ -440,8 +444,7 @@
 
                 // Simulate verification delay
                 setTimeout(() => {
-                    // For demo, accept code "1234" or random success
-                    const success = state.code === '1234' || Math.random() > 0.6;
+                    const success = state.code === CONFIG.AUTH_CODE;
                     
                     if (success) {
                         state.authState = 'success';
@@ -459,7 +462,7 @@
                         state.code = '';
                         updateStatus('AWAITING INPUT');
                     }, success ? CONFIG.SUCCESS_FLASH : CONFIG.ERROR_FLASH);
-                }, 800);
+                }, CONFIG.VERIFY_DELAY);
             }
 
             function flashError() {
@@ -505,11 +508,9 @@
                 if (state.authState !== 'idle') return;
                 
                 const length = Math.floor(Math.random() * 4) + 4; // 4-7 digits
-                let code = '';
                 
                 for (let i = 0; i < length; i++) {
                     const digit = Math.floor(Math.random() * 10).toString();
-                    code += digit;
                     
                     setTimeout(() => {
                         if (state.authState === 'idle') {
@@ -538,7 +539,7 @@
             }
 
             function updateStatus(text) {
-                state.statusText.textContent = 'STATUS: ' + text;
+                state.statusText.textContent = `STATUS: ${text}`;
             }
 
             // ===========================================
@@ -587,7 +588,7 @@
                 }
 
                 // Clear flicker after duration
-                if (state.screenFlicker && now - state.flickerStartTime > 100) {
+                if (state.screenFlicker && now - state.flickerStartTime > CONFIG.SCREEN_FLICKER_DURATION) {
                     state.screenFlicker = false;
                 }
 
@@ -631,20 +632,27 @@
             }
 
             function drawNoise(ctx, canvas) {
-                const imageData = ctx.createImageData(canvas.width, canvas.height);
-                const data = imageData.data;
+                const now = Date.now();
 
-                for (let i = 0; i < data.length; i += 4) {
-                    if (Math.random() < CONFIG.NOISE_INTENSITY) {
-                        const noise = Math.random() * 20;
-                        data[i] = noise;     // R
-                        data[i + 1] = noise * 2;  // G (green tint)
-                        data[i + 2] = noise;     // B
-                        data[i + 3] = 30;        // A
+                // Regenerate grain at ~10fps (every 100ms)
+                if (!state.cachedGrain || now - state.lastGrainUpdate >= state.GRAIN_UPDATE_INTERVAL) {
+                    state.cachedGrain = ctx.createImageData(canvas.width, canvas.height);
+                    const data = state.cachedGrain.data;
+
+                    for (let i = 0; i < data.length; i += 4) {
+                        if (Math.random() < CONFIG.NOISE_INTENSITY) {
+                            const noise = Math.random() * 20;
+                            data[i] = noise;     // R
+                            data[i + 1] = noise * 2;  // G (green tint)
+                            data[i + 2] = noise;     // B
+                            data[i + 3] = 30;        // A
+                        }
                     }
+
+                    state.lastGrainUpdate = now;
                 }
 
-                ctx.putImageData(imageData, 0, 0);
+                ctx.putImageData(state.cachedGrain, 0, 0);
             }
 
             function drawPhosphorGlow(ctx, canvas) {
@@ -664,7 +672,10 @@
                 ctx.font = '12px "Courier New", monospace';
                 ctx.textAlign = 'center';
                 ctx.fillStyle = COLORS.TERMINAL_GREEN;
+                ctx.shadowColor = COLORS.SEEGSON_GREEN;
+                ctx.shadowBlur = 5;
                 ctx.fillText('SEEGSON SEVASTOLINK', CONFIG.CANVAS_WIDTH / 2, 25);
+                ctx.shadowBlur = 0;
 
                 // Separator line
                 ctx.strokeStyle = COLORS.TERMINAL_GREEN;
@@ -696,12 +707,17 @@
                 // Label
                 ctx.font = '10px "Courier New", monospace';
                 ctx.textAlign = 'left';
-                ctx.fillStyle = COLORS.SEGSON_GREEN;
+                ctx.fillStyle = COLORS.SEEGSON_GREEN;
+                ctx.shadowColor = COLORS.SEEGSON_GREEN;
+                ctx.shadowBlur = 4;
                 ctx.fillText('ACCESS CODE:', 35, displayY + 15);
+                ctx.shadowBlur = 0;
 
                 // Code display with cursor
                 ctx.font = '18px "Courier New", monospace';
                 ctx.fillStyle = COLORS.HYPERSLEEP_WHITE;
+                ctx.shadowColor = COLORS.SEEGSON_GREEN;
+                ctx.shadowBlur = 6;
                 
                 let displayText = state.code.split('').map(() => CONFIG.MASK_CHAR).join('');
                 
@@ -711,6 +727,7 @@
                 }
 
                 ctx.fillText(displayText, 35, displayY + 35);
+                ctx.shadowBlur = 0;
 
                 // Auth state overlay
                 if (state.authState === 'success') {
@@ -732,13 +749,39 @@
                 const pos = getButtonPosition(index);
                 const isFlashing = state.flashingButton === label;
                 const now = Date.now();
-                
+
                 // Calculate flash intensity
                 let flashIntensity = 0;
                 if (isFlashing) {
                     const elapsed = now - state.flashStartTime;
                     flashIntensity = 1 - (elapsed / CONFIG.KEYPRESS_FLASH);
                     flashIntensity = Math.max(0, flashIntensity);
+                }
+
+                // Chromatic aberration on hot edges (when flashing intensely)
+                const applyChromatic = isFlashing && flashIntensity > 0.4;
+                const chromaOffset = 2;  // RGB channel offset in pixels
+
+                if (applyChromatic) {
+                    // Draw red channel offset (left)
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'lighter';
+                    ctx.globalAlpha = 0.5 * flashIntensity;
+                    ctx.strokeStyle = '#ff0000';
+                    ctx.lineWidth = 2;
+                    roundRect(ctx, pos.x - chromaOffset, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
+                    ctx.stroke();
+                    ctx.restore();
+
+                    // Draw blue channel offset (right)
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'lighter';
+                    ctx.globalAlpha = 0.5 * flashIntensity;
+                    ctx.strokeStyle = '#0000ff';
+                    ctx.lineWidth = 2;
+                    roundRect(ctx, pos.x + chromaOffset, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
+                    ctx.stroke();
+                    ctx.restore();
                 }
 
                 // Button background
@@ -751,7 +794,7 @@
                 } else {
                     ctx.fillStyle = COLORS.XENOMORPH_SKIN;
                 }
-                
+
                 roundRect(ctx, pos.x, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
                 ctx.fill();
 
@@ -763,7 +806,7 @@
 
                 // Button glow when flashing
                 if (isFlashing && flashIntensity > 0.5) {
-                    ctx.shadowColor = COLORS.SEGSON_GREEN;
+                    ctx.shadowColor = COLORS.SEEGSON_GREEN;
                     ctx.shadowBlur = 15;
                     roundRect(ctx, pos.x, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
                     ctx.stroke();
@@ -774,7 +817,7 @@
                 ctx.font = '20px "Courier New", monospace';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                
+
                 const centerX = pos.x + CONFIG.BUTTON_WIDTH / 2;
                 const centerY = pos.y + CONFIG.BUTTON_HEIGHT / 2;
 
@@ -783,13 +826,23 @@
                 if (label === 'C') displayLabel = 'CLR';
                 else if (label === 'E') displayLabel = 'ENT';
 
-                ctx.fillStyle = isFlashing ? COLORS.XENOMORPH_SKIN : COLORS.SEGSON_GREEN;
-                
+                // Chromatic aberration on label when flashing hard
+                if (applyChromatic) {
+                    ctx.globalAlpha = 0.6;
+                    ctx.fillStyle = '#ff0044';  // Red offset
+                    ctx.fillText(displayLabel, centerX - chromaOffset, centerY);
+                    ctx.fillStyle = '#0044ff';  // Blue offset
+                    ctx.fillText(displayLabel, centerX + chromaOffset, centerY);
+                    ctx.globalAlpha = 1;
+                }
+
+                ctx.fillStyle = isFlashing ? COLORS.XENOMORPH_SKIN : COLORS.SEEGSON_GREEN;
+
                 if (isFlashing) {
                     ctx.shadowColor = COLORS.HYPERSLEEP_WHITE;
                     ctx.shadowBlur = 5;
                 }
-                
+
                 ctx.fillText(displayLabel, centerX, centerY);
                 ctx.shadowBlur = 0;
             }
@@ -810,10 +863,10 @@
                 ctx.textAlign = 'center';
                 
                 if (state.authState === 'verifying') {
-                    ctx.fillStyle = COLORS.SEGSON_GREEN;
+                    ctx.fillStyle = COLORS.SEEGSON_GREEN;
                 } else if (state.authState === 'success') {
-                    ctx.fillStyle = COLORS.SEGSON_GREEN;
-                    ctx.shadowColor = COLORS.SEGSON_GREEN;
+                    ctx.fillStyle = COLORS.SEEGSON_GREEN;
+                    ctx.shadowColor = COLORS.SEEGSON_GREEN;
                     ctx.shadowBlur = 10;
                 } else if (state.authState === 'denied') {
                     ctx.fillStyle = COLORS.ACID_BLOOD;
