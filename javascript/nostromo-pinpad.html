@@ -276,6 +276,31 @@
                 font-size: 22px;
             }
         }
+
+        .footer-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .key:focus-visible,
+        .demo-btn:focus-visible {
+            outline: 2px solid var(--indicator-amber);
+            outline-offset: 2px;
+        }
+
+        .reduced-motion .lamp.active {
+            animation: none;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -290,19 +315,79 @@
 
         <div class="display">
             <div id="codeDisplay" class="code"></div>
-            <div id="messageDisplay" class="message">Ready</div>
+            <div id="messageDisplay" class="message" aria-live="polite">Ready</div>
         </div>
 
         <div id="keypad" class="keypad" role="group" aria-label="pinpad keys"></div>
 
         <div class="footer">
-            <span>Keys: 0-9, C, E</span>
-            <button id="demoBtn" class="demo-btn" type="button">Demo Mode</button>
+            <span>Keys: 0-9 · C / Backspace clear · E / Enter submit</span>
+            <div class="footer-actions">
+                <button id="demoBtn" class="demo-btn" type="button">Demo Mode</button>
+                <button id="soundBtn" class="demo-btn" type="button" aria-pressed="true">Sound: On</button>
+            </div>
         </div>
     </section>
 
     <script>
         (() => {
+            const Sound = (() => {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                let ctx = null, master = null, noiseBuf = null;
+                let enabled = (() => { try { const v = localStorage.getItem('pinpad:sound'); return v === null ? true : v === '1'; } catch (e) { return true; } })();
+                function save() { try { localStorage.setItem('pinpad:sound', enabled ? '1' : '0'); } catch (e) {} }
+                function unlock() {
+                    if (!AC) return;
+                    if (!ctx) {
+                        ctx = new AC();
+                        master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+                        const len = Math.floor(ctx.sampleRate * 0.05);
+                        noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+                        const d = noiseBuf.getChannelData(0);
+                        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+                    }
+                    if (ctx.state === 'suspended') ctx.resume();
+                }
+                function tone(freq, dur, type, peak, slideTo) {
+                    if (!enabled || !ctx || ctx.state !== 'running') return;
+                    const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+                    o.type = type; o.frequency.setValueAtTime(freq, t);
+                    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur * 0.8);
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                    o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+                }
+                function thud(peak, cutoff) {
+                    if (!enabled || !ctx || ctx.state !== 'running' || !noiseBuf) return;
+                    const t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = noiseBuf;
+                    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+                    const g = ctx.createGain();
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(peak, t + 0.002);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+                    s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + 0.07);
+                }
+                return {
+                    unlock,
+                    tone,
+                    thud,
+                    key()    { TUNING.key(); },
+                    action() { TUNING.action(); },
+                    error()  { TUNING.error(); },
+                    success(){ TUNING.success(); },
+                    toggle() { enabled = !enabled; save(); return enabled; },
+                    get enabled() { return enabled; }
+                };
+            })();
+
+            const TUNING = {
+                key() { Sound.thud(0.22, 520); Sound.tone(880, 0.05, 'sine', 0.05); },
+                action() { Sound.tone(660, 0.10, 'sine', 0.09); },
+                error() { Sound.tone(180, 0.30, 'square', 0.09); },
+                success() { Sound.tone(988, 0.12, 'sine', 0.09); }
+            };
+
             const KEY_LAYOUT = [
                 '1', '2', '3',
                 '4', '5', '6',
@@ -316,10 +401,27 @@
             const amberLamp = document.getElementById('amberLamp');
             const greenLamp = document.getElementById('greenLamp');
             const demoBtn = document.getElementById('demoBtn');
+            const soundBtn = document.getElementById('soundBtn');
 
             let code = '';
             let isBusy = false;
             let demoTimer = null;
+            let demoResume = false;
+            const demoTimeouts = new Set();
+
+            function trackTimeout(fn, delay) {
+                const id = window.setTimeout(() => {
+                    demoTimeouts.delete(id);
+                    fn();
+                }, delay);
+                demoTimeouts.add(id);
+                return id;
+            }
+
+            function clearDemoTimeouts() {
+                demoTimeouts.forEach((id) => window.clearTimeout(id));
+                demoTimeouts.clear();
+            }
 
             function setStatus(message, busy) {
                 isBusy = busy;
@@ -343,15 +445,18 @@
 
             function submitCode() {
                 if (!code.length || isBusy) {
+                    Sound.error();
                     return;
                 }
 
                 setStatus('Cycle in progress', true);
+                Sound.action();
                 const submitted = code;
 
                 window.setTimeout(() => {
                     setStatus('Access granted', false);
                     messageDisplay.textContent = `Open ${submitted}`;
+                    Sound.success();
                     code = '';
                     renderCode();
                 }, 700);
@@ -364,12 +469,14 @@
 
                 flashPress(key);
                 if (key === 'C') {
+                    Sound.key();
                     code = '';
                     setStatus('Code cleared', false);
                 } else if (key === 'E') {
                     submitCode();
                     return;
                 } else if (code.length < 6) {
+                    Sound.key();
                     code += key;
                     setStatus('Entering code', false);
                 }
@@ -391,7 +498,7 @@
                     button.dataset.key = key;
                     button.textContent = key;
                     button.setAttribute('aria-label', `Key ${key}`);
-                    button.addEventListener('click', () => handleInput(key));
+                    button.addEventListener('click', () => { Sound.unlock(); handleInput(key); });
                     keypad.appendChild(button);
                 });
             }
@@ -413,47 +520,100 @@
                 return null;
             }
 
+            function runDemoEntry() {
+                if (isBusy) {
+                    return;
+                }
+                code = '';
+                const seq = [
+                    String(Math.floor(Math.random() * 10)),
+                    String(Math.floor(Math.random() * 10)),
+                    String(Math.floor(Math.random() * 10)),
+                    String(Math.floor(Math.random() * 10))
+                ];
+                seq.forEach((digit, index) => {
+                    trackTimeout(() => handleInput(digit), index * 110);
+                });
+                trackTimeout(() => handleInput('E'), seq.length * 130);
+            }
+
+            function startDemoInterval() {
+                demoTimer = window.setInterval(runDemoEntry, 2200);
+            }
+
             function toggleDemo() {
                 if (demoTimer) {
                     window.clearInterval(demoTimer);
                     demoTimer = null;
+                    clearDemoTimeouts();
                     demoBtn.textContent = 'Demo Mode';
                     setStatus('Ready', false);
                     return;
                 }
 
                 demoBtn.textContent = 'Stop Demo';
-                demoTimer = window.setInterval(() => {
-                    if (isBusy) {
-                        return;
-                    }
-                    code = '';
-                    const seq = [
-                        String(Math.floor(Math.random() * 10)),
-                        String(Math.floor(Math.random() * 10)),
-                        String(Math.floor(Math.random() * 10)),
-                        String(Math.floor(Math.random() * 10))
-                    ];
-                    seq.forEach((digit, index) => {
-                        window.setTimeout(() => handleInput(digit), index * 110);
-                    });
-                    window.setTimeout(() => handleInput('E'), seq.length * 130);
-                }, 2200);
+                startDemoInterval();
             }
 
             createButtons();
             renderCode();
 
             window.addEventListener('keydown', (event) => {
+                if (event.ctrlKey || event.metaKey || event.altKey) {
+                    return;
+                }
                 const key = keyboardToKey(event);
                 if (!key) {
                     return;
                 }
                 event.preventDefault();
+                Sound.unlock();
                 handleInput(key);
             });
 
-            demoBtn.addEventListener('click', toggleDemo);
+            function syncSoundBtn() {
+                soundBtn.textContent = Sound.enabled ? 'Sound: On' : 'Sound: Off';
+                soundBtn.setAttribute('aria-pressed', String(Sound.enabled));
+            }
+
+            demoBtn.addEventListener('click', () => { Sound.unlock(); toggleDemo(); });
+            soundBtn.addEventListener('click', () => {
+                Sound.unlock();
+                Sound.toggle();
+                syncSoundBtn();
+                soundBtn.blur();
+            });
+            syncSoundBtn();
+
+            const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)');
+            function applyReducedMotion() {
+                document.documentElement.classList.toggle('reduced-motion', REDUCED.matches);
+            }
+            if (typeof REDUCED.addEventListener === 'function') {
+                REDUCED.addEventListener('change', applyReducedMotion);
+            }
+            applyReducedMotion();
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    clearDemoTimeouts();
+                    if (demoTimer) {
+                        window.clearInterval(demoTimer);
+                        demoTimer = null;
+                        demoResume = true;
+                    }
+                } else if (demoResume) {
+                    demoResume = false;
+                    startDemoInterval();
+                }
+            });
+
+            trackTimeout(() => {
+                if (!demoTimer) {
+                    runDemoEntry();
+                }
+            }, 700);
+
             setStatus('Ready', false);
         })();
     </script>

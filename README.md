@@ -72,6 +72,15 @@ cargo build --release --target thumbv7em-none-eabihf
 
 ## Usage
 
+### Every Demo Supports
+
+- **Keyboard input** — digits `0-9`, `Backspace`/`C` to clear, `Enter` to submit, `D` toggles demo mode on most demos
+- **Sound** — synthesized per-theme keypress tones (Web Audio, no files). `Sound: On/Off` button, preference persisted
+- **Reduced motion** — honors `prefers-reduced-motion` (decorative flicker/glitch disabled, function preserved)
+- **Background tab** — animation loops pause via the Page Visibility API
+- **HiDPI** — canvas demos render crisp at native device pixel ratio
+- **Screen readers** — ARIA live status announcements and labeled controls
+
 ### JavaScript Controls
 - **Click** buttons to simulate key presses
 - **Demo Mode** - Auto-enters random codes every 8 seconds
@@ -127,5 +136,6 @@ Read [prompts/INITIAL.md](prompts/INITIAL.md) for implementation requirements.
 
 MIT
 
-> **STATUS: ARCHIVED EXPERIMENT (2026-09-04)** — agentic-AI development scaffold, no
-> completed implementation. Kept as a workflow artifact only.
+> **Revived 2026-09** — all 8 keypads interactive with keyboard input, synthesized
+> per-theme audio, ARIA status announcements, reduced-motion and HiDPI support.
+> Research-driven iteration log: [research/VISION-SCORES.md](research/VISION-SCORES.md).

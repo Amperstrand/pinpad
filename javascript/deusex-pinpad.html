@@ -274,10 +274,49 @@
             }
         }
 
+        .controls {
+            display: flex;
+            justify-content: center;
+            margin-top: 14px;
+        }
+
+        .btn {
+            border: 1px solid rgba(229, 175, 46, 0.6);
+            border-radius: 9px;
+            background: linear-gradient(180deg, rgba(255, 234, 33, 0.06), rgba(19, 18, 0, 0.9));
+            color: var(--amber);
+            font-family: inherit;
+            font-size: 11px;
+            letter-spacing: 1.6px;
+            text-transform: uppercase;
+            padding: 8px 16px;
+            cursor: pointer;
+            transition: border-color 130ms ease, box-shadow 130ms ease, color 130ms ease;
+        }
+
+        .btn:hover {
+            border-color: var(--primary-gold);
+            color: var(--primary-gold);
+            box-shadow: 0 0 16px rgba(255, 234, 33, 0.32);
+        }
+
+        .btn:focus-visible {
+            outline: 2px solid var(--primary-gold);
+            outline-offset: 2px;
+        }
+
         @media (max-width: 480px) {
             .frame { padding: 16px 14px; }
             .key { height: 62px; font-size: 25px; }
             .code { font-size: 25px; letter-spacing: 6px; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
         }
     </style>
 </head>
@@ -290,15 +329,76 @@
         <section class="display" aria-live="polite">
             <div class="status" id="statusText">Boot sequence...</div>
             <div class="code" id="maskedCode"></div>
-            <div class="hint">Keys: 0-9, C/Backspace clear, E/Enter submit</div>
+            <div class="hint">Keys: 0-9, C/Backspace clear, E/Enter submit, S sound</div>
         </section>
 
         <div class="keys" id="keys"></div>
+
+        <div class="controls">
+            <button class="btn" id="soundBtn" type="button" aria-pressed="true">Sound: On</button>
+        </div>
     </main>
 
     <script>
         (() => {
             "use strict";
+
+            const Sound = (() => {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                let ctx = null, master = null, noiseBuf = null;
+                let enabled = (() => { try { const v = localStorage.getItem('pinpad:sound'); return v === null ? true : v === '1'; } catch (e) { return true; } })();
+                function save() { try { localStorage.setItem('pinpad:sound', enabled ? '1' : '0'); } catch (e) {} }
+                function unlock() {
+                    if (!AC) return;
+                    if (!ctx) {
+                        ctx = new AC();
+                        master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+                        const len = Math.floor(ctx.sampleRate * 0.05);
+                        noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+                        const d = noiseBuf.getChannelData(0);
+                        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+                    }
+                    if (ctx.state === 'suspended') ctx.resume();
+                }
+                function tone(freq, dur, type, peak, slideTo) {
+                    if (!enabled || !ctx || ctx.state !== 'running') return;
+                    const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+                    o.type = type; o.frequency.setValueAtTime(freq, t);
+                    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur * 0.8);
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                    o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+                }
+                function thud(peak, cutoff) {
+                    if (!enabled || !ctx || ctx.state !== 'running' || !noiseBuf) return;
+                    const t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = noiseBuf;
+                    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+                    const g = ctx.createGain();
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(peak, t + 0.002);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+                    s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + 0.07);
+                }
+                return {
+                    unlock, tone, thud,
+                    key()    { TUNING.key(); },
+                    action() { TUNING.action(); },
+                    error()  { TUNING.error(); },
+                    success(){ TUNING.success(); },
+                    toggle() { enabled = !enabled; save(); return enabled; },
+                    get enabled() { return enabled; }
+                };
+            })();
+
+            const TUNING = {
+                key()     { Sound.tone(520, 0.06, "sine", 0.09); },
+                action()  { Sound.tone(660, 0.10, "sine", 0.10); },
+                error()   { Sound.tone(200, 0.22, "triangle", 0.10); },
+                success() { Sound.tone(784, 0.10, "sine", 0.10); Sound.tone(1047, 0.14, "sine", 0.10); },
+            };
+
+            const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)");
 
             const TIMING = {
                 bootMs: 400,
@@ -316,6 +416,7 @@
             const statusText = document.getElementById("statusText");
             const maskedCode = document.getElementById("maskedCode");
             const keysRoot = document.getElementById("keys");
+            const soundBtn = document.getElementById("soundBtn");
 
             let input = "";
             let booted = false;
@@ -348,7 +449,8 @@
                     if (input.length < MAX_DIGITS) {
                         input += label;
                         refreshMask();
-                        setStatus("Digit accepted");
+                        setStatus(`Digit accepted ${input.length}/${MAX_DIGITS}`);
+                        Sound.key();
                     }
                     return;
                 }
@@ -357,6 +459,7 @@
                     input = "";
                     refreshMask();
                     setStatus("Input cleared");
+                    Sound.key();
                     return;
                 }
 
@@ -368,25 +471,33 @@
             function verify() {
                 if (input.length === 0) {
                     setStatus("No code entered", "error");
+                    Sound.error();
                     return;
                 }
 
                 locked = true;
                 setStatus("Verifying...");
+                Sound.action();
 
                 window.setTimeout(() => {
                     if (input === CORRECT_CODE) {
                         setStatus("Access granted", "ok");
-                        frame.animate(
-                            [{ boxShadow: "0 0 32px rgba(156, 255, 156, 0.8)" }, { boxShadow: "0 0 32px rgba(255, 234, 33, 0.18)" }],
-                            { duration: TIMING.successFlashMs, easing: "ease-out" }
-                        );
+                        Sound.success();
+                        if (!REDUCED.matches) {
+                            frame.animate(
+                                [{ boxShadow: "0 0 32px rgba(156, 255, 156, 0.8)" }, { boxShadow: "0 0 32px rgba(255, 234, 33, 0.18)" }],
+                                { duration: TIMING.successFlashMs, easing: "ease-out" }
+                            );
+                        }
                     } else {
                         setStatus("Access denied", "error");
-                        frame.animate(
-                            [{ boxShadow: "0 0 34px rgba(255, 0, 0, 0.85)" }, { boxShadow: "0 0 32px rgba(255, 234, 33, 0.18)" }],
-                            { duration: TIMING.errorFlashMs, easing: "ease-out" }
-                        );
+                        Sound.error();
+                        if (!REDUCED.matches) {
+                            frame.animate(
+                                [{ boxShadow: "0 0 34px rgba(255, 0, 0, 0.85)" }, { boxShadow: "0 0 32px rgba(255, 234, 33, 0.18)" }],
+                                { duration: TIMING.errorFlashMs, easing: "ease-out" }
+                            );
+                        }
                         input = "";
                         refreshMask();
                     }
@@ -395,6 +506,10 @@
             }
 
             function onKeydown(event) {
+                if (event.ctrlKey || event.metaKey || event.altKey) return;
+                if (event.target === soundBtn) return;
+                Sound.unlock();
+
                 const key = event.key;
 
                 if (/^[0-9]$/.test(key)) {
@@ -412,6 +527,12 @@
                 if (key === "Enter" || key.toLowerCase() === "e") {
                     event.preventDefault();
                     press("E");
+                    return;
+                }
+
+                if (key.toLowerCase() === "s") {
+                    event.preventDefault();
+                    toggleSound();
                 }
             }
 
@@ -422,18 +543,39 @@
                     button.className = "key";
                     button.textContent = label;
                     button.setAttribute("aria-label", `Key ${label}`);
-                    button.addEventListener("click", () => press(label));
+                    button.addEventListener("click", () => { Sound.unlock(); press(label); });
                     keysRoot.appendChild(button);
                     keyEls.set(label, button);
                 });
+            }
+
+            function syncSoundBtn() {
+                soundBtn.textContent = Sound.enabled ? "Sound: On" : "Sound: Off";
+                soundBtn.setAttribute("aria-pressed", String(Sound.enabled));
+            }
+
+            function toggleSound() {
+                Sound.unlock();
+                Sound.toggle();
+                syncSoundBtn();
             }
 
             function boot() {
                 createButtons();
                 refreshMask();
                 window.addEventListener("keydown", onKeydown);
+                soundBtn.addEventListener("click", toggleSound);
+                syncSoundBtn();
                 frame.style.setProperty("--boot-ms", `${TIMING.bootMs}ms`);
                 frame.style.setProperty("--keypress-flash-ms", `${TIMING.keypressFlashMs}ms`);
+
+                if (REDUCED.matches) {
+                    frame.classList.remove("booting");
+                    booted = true;
+                    locked = false;
+                    setStatus("Awaiting passcode");
+                    return;
+                }
 
                 setStatus("Boot sequence... scanline sync");
                 window.setTimeout(() => {

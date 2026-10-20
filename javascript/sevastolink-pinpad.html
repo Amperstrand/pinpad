@@ -187,7 +187,38 @@
             color: var(--synthetic-skin);
             text-align: center;
             letter-spacing: 1px;
-            max-width: 320px;
+            max-width: 340px;
+            line-height: 1.6;
+        }
+
+        /* ===========================================
+           ACCESSIBILITY
+           =========================================== */
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            margin: -1px;
+            padding: 0;
+            border: 0;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+            clip-path: inset(50%);
+            white-space: nowrap;
+        }
+
+        .btn:focus-visible,
+        [role="application"]:focus-visible {
+            outline: 2px solid var(--seegson-green);
+            outline-offset: 2px;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
         }
     </style>
 </head>
@@ -198,10 +229,13 @@
     </div>
 
     <div class="crt-container">
-        <canvas id="sevastolinkCanvas" width="320" height="420"></canvas>
+        <div role="application" tabindex="0" aria-label="Sevastolink keypad. Type digits 0-9, Backspace to delete, Enter to submit." aria-roledescription="keypad">
+            <canvas id="sevastolinkCanvas" width="320" height="420"></canvas>
+        </div>
         <div class="scanlines"></div>
         <div class="crt-curvature"></div>
     </div>
+    <p id="a11yStatus" role="status" class="visually-hidden"></p>
 
     <div class="status-bar">
         <div class="status-text" id="statusText">STATUS: AWAITING INPUT</div>
@@ -211,10 +245,12 @@
         <button class="btn" id="demoBtn">Demo</button>
         <button class="btn" id="resetBtn">Reset</button>
         <button class="btn" id="clearBtn">Clear Code</button>
+        <button class="btn" id="soundBtn" type="button" aria-pressed="true">Sound: On</button>
     </div>
 
     <div class="instructions">
-        Enter access code using keypad. Press ENTER to submit.
+        Enter access code using keypad. Press ENTER to submit.<br>
+        Keyboard: 0-9 · Backspace/C clear · Enter/E submit · D demo · S sound
     </div>
 
     <script>
@@ -226,6 +262,66 @@
 
         (() => {
             'use strict';
+
+            // ===========================================
+            // SHARED SOUND MODULE
+            // unlock() must be called from a user gesture
+            // (pointer/keyboard handler) before any tone.
+            // ===========================================
+            const Sound = (() => {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                let ctx = null, master = null, noiseBuf = null;
+                let enabled = (() => { try { const v = localStorage.getItem('pinpad:sound'); return v === null ? true : v === '1'; } catch (e) { return true; } })();
+                function save() { try { localStorage.setItem('pinpad:sound', enabled ? '1' : '0'); } catch (e) {} }
+                function unlock() {
+                    if (!AC) return;
+                    if (!ctx) {
+                        ctx = new AC();
+                        master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+                        const len = Math.floor(ctx.sampleRate * 0.05);
+                        noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+                        const d = noiseBuf.getChannelData(0);
+                        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+                    }
+                    if (ctx.state === 'suspended') {
+                        const p = ctx.resume();
+                        if (p && typeof p.catch === 'function') p.catch(() => {});
+                    }
+                }
+                function tone(freq, dur, type, peak, slideTo) {
+                    if (!enabled || !ctx || ctx.state !== 'running') return;
+                    const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+                    o.type = type; o.frequency.setValueAtTime(freq, t);
+                    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur * 0.8);
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                    o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+                }
+                function thud(peak, cutoff) { // filtered noise burst = mechanical clunk
+                    if (!enabled || !ctx || ctx.state !== 'running' || !noiseBuf) return;
+                    const t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = noiseBuf;
+                    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+                    const g = ctx.createGain();
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(peak, t + 0.002);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+                    s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + 0.07);
+                }
+                return {
+                    unlock,
+                    tone,
+                    thud,
+                    key()    { TUNING.key(); },     // digit press
+                    action() { TUNING.action(); },  // submit/enter
+                    error()  { TUNING.error(); },
+                    success(){ TUNING.success(); },
+                    toggle() { enabled = !enabled; save(); return enabled; },
+                    get enabled() { return enabled; }
+                };
+            })();
+
+            const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)');
 
             // ===========================================
             // COLOR DEFINITIONS
@@ -320,13 +416,15 @@
 
                 // Cached film grain (regenerated at ~10fps)
                 cachedGrain: null,
+                grainCanvas: null,
                 lastGrainUpdate: 0,
                 GRAIN_UPDATE_INTERVAL: 100,  // 100ms = 10fps
 
                 // UI references
                 canvas: null,
                 ctx: null,
-                statusText: null
+                statusText: null,
+                a11yStatus: null
             };
 
             // ===========================================
@@ -336,6 +434,10 @@
                 state.canvas = document.getElementById('sevastolinkCanvas');
                 state.ctx = state.canvas.getContext('2d');
                 state.statusText = document.getElementById('statusText');
+                state.a11yStatus = document.getElementById('a11yStatus');
+
+                // Scale backing store for HiDPI displays; draw code stays in logical coords
+                fitCanvas();
 
                 // Initialize timing
                 state.lastCursorToggle = Date.now();
@@ -347,6 +449,25 @@
                 setupEventListeners();
                 startAnimation();
                 updateStatus('AWAITING INPUT');
+
+                // Initialize sound toggle label from persisted preference
+                syncSoundBtn();
+
+                // Frozen-frame liveliness: enter one code shortly after load so a
+                // fresh screenshot shows digits on the display (before any 5s interval)
+                setTimeout(enterRandomCode, 600);
+            }
+
+            // ===========================================
+            // HiDPI CANVAS
+            // ===========================================
+            function fitCanvas() {
+                const dpr = Math.min(window.devicePixelRatio || 1, 2);
+                state.canvas.style.width = CONFIG.CANVAS_WIDTH + 'px';
+                state.canvas.style.height = CONFIG.CANVAS_HEIGHT + 'px';
+                state.canvas.width = Math.round(CONFIG.CANVAS_WIDTH * dpr);
+                state.canvas.height = Math.round(CONFIG.CANVAS_HEIGHT * dpr);
+                state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             }
 
             // ===========================================
@@ -357,24 +478,62 @@
                 document.getElementById('demoBtn').addEventListener('click', toggleDemoMode);
                 document.getElementById('resetBtn').addEventListener('click', resetTerminal);
                 document.getElementById('clearBtn').addEventListener('click', clearCode);
+                document.getElementById('soundBtn').addEventListener('click', toggleSound);
 
                 // Keyboard support
                 document.addEventListener('keydown', handleKeyDown);
+
+                // Pause all animation/demo timers while the tab is hidden
+                document.addEventListener('visibilitychange', handleVisibilityChange);
             }
 
             function handleKeyDown(event) {
+                if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+                Sound.unlock();
                 const key = event.key.toUpperCase();
-                
+
                 if (key >= '0' && key <= '9') {
+                    event.preventDefault();
                     pressButton(key);
                 } else if (key === 'C' || key === 'BACKSPACE') {
+                    event.preventDefault();
                     pressButton('C');
-                } else if (key === 'ENTER') {
+                } else if (key === 'ENTER' || key === 'E') {
+                    event.preventDefault();
                     pressButton('E');
+                } else if (key === 'D') {
+                    event.preventDefault();
+                    toggleDemoMode();
+                } else if (key === 'S') {
+                    event.preventDefault();
+                    toggleSound();
+                }
+            }
+
+            function handleVisibilityChange() {
+                if (document.hidden) {
+                    if (state.animationId !== null) {
+                        cancelAnimationFrame(state.animationId);
+                        state.animationId = null;
+                    }
+                    if (state.demoInterval !== null) {
+                        clearInterval(state.demoInterval);
+                        state.demoInterval = null;
+                    }
+                } else {
+                    state.lastFrameTime = performance.now();
+                    if (state.animationId === null) {
+                        startAnimation();
+                    }
+                    if (state.demoMode && state.demoInterval === null) {
+                        scheduleDemoInterval();
+                    }
                 }
             }
 
             function handleCanvasClick(event) {
+                Sound.unlock();
                 const rect = state.canvas.getBoundingClientRect();
                 const x = event.clientX - rect.left;
                 const y = event.clientY - rect.top;
@@ -418,13 +577,16 @@
 
                 // Handle button action
                 if (label === 'C') {
+                    Sound.key();
                     // Clear last digit
                     state.code = state.code.slice(0, -1);
                     updateStatus('INPUT CLEARED');
                 } else if (label === 'E') {
+                    Sound.action();
                     // Enter - submit code
                     submitCode();
                 } else if (state.code.length < CONFIG.MAX_CODE_LENGTH) {
+                    Sound.key();
                     // Add digit
                     state.code += label;
                     updateStatus('INPUT RECEIVED');
@@ -433,6 +595,7 @@
 
             function submitCode() {
                 if (state.code.length === 0) {
+                    Sound.error();
                     updateStatus('ERROR: NO CODE ENTERED');
                     flashError();
                     return;
@@ -445,12 +608,14 @@
                 // Simulate verification delay
                 setTimeout(() => {
                     const success = state.code === CONFIG.AUTH_CODE;
-                    
+
                     if (success) {
+                        Sound.success();
                         state.authState = 'success';
                         state.authStartTime = Date.now();
                         updateStatus('ACCESS GRANTED');
                     } else {
+                        Sound.error();
                         state.authState = 'denied';
                         state.authStartTime = Date.now();
                         updateStatus('ACCESS DENIED');
@@ -474,6 +639,7 @@
             }
 
             function toggleDemoMode() {
+                Sound.unlock();
                 state.demoMode = !state.demoMode;
                 const btn = document.getElementById('demoBtn');
 
@@ -490,6 +656,10 @@
 
             function startDemoSequence() {
                 enterRandomCode();
+                scheduleDemoInterval();
+            }
+
+            function scheduleDemoInterval() {
                 state.demoInterval = setInterval(() => {
                     if (state.demoMode && state.authState === 'idle') {
                         enterRandomCode();
@@ -528,18 +698,39 @@
             }
 
             function resetTerminal() {
+                Sound.unlock();
                 state.code = '';
                 state.authState = 'idle';
                 updateStatus('TERMINAL RESET');
             }
 
             function clearCode() {
+                Sound.unlock();
                 state.code = '';
                 updateStatus('CODE CLEARED');
             }
 
+            /**
+             * Toggle sound on/off (persisted)
+             */
+            function toggleSound() {
+                Sound.unlock();
+                Sound.toggle();
+                syncSoundBtn();
+            }
+
+            function syncSoundBtn() {
+                const btn = document.getElementById('soundBtn');
+                btn.textContent = Sound.enabled ? 'Sound: On' : 'Sound: Off';
+                btn.setAttribute('aria-pressed', String(Sound.enabled));
+            }
+
+            /**
+             * Update status text (mirrored to the screen-reader live region)
+             */
             function updateStatus(text) {
                 state.statusText.textContent = `STATUS: ${text}`;
+                state.a11yStatus.textContent = text;
             }
 
             // ===========================================
@@ -577,8 +768,8 @@
                     state.lastCursorToggle = now;
                 }
 
-                // Update screen flicker
-                if (now >= state.nextFlickerTime) {
+                // Update screen flicker (decorative — skipped under reduced motion)
+                if (!REDUCED.matches && now >= state.nextFlickerTime) {
                     state.screenFlicker = true;
                     state.flickerStartTime = now;
                     state.nextFlickerTime = now + randomRange(
@@ -600,23 +791,22 @@
 
             function render() {
                 const ctx = state.ctx;
-                const canvas = state.canvas;
 
-                // Clear with background
+                // Clear with background (logical coordinates)
                 ctx.fillStyle = COLORS.PURE_BLACK;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
 
                 // Draw screen noise
-                drawNoise(ctx, canvas);
+                drawNoise(ctx);
 
                 // Apply screen flicker
                 if (state.screenFlicker) {
                     ctx.fillStyle = 'rgba(5, 182, 105, 0.03)';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
                 }
 
                 // Draw phosphor glow effect
-                drawPhosphorGlow(ctx, canvas);
+                drawPhosphorGlow(ctx);
 
                 // Draw header
                 drawHeader(ctx);
@@ -631,12 +821,14 @@
                 drawFooter(ctx);
             }
 
-            function drawNoise(ctx, canvas) {
+            function drawNoise(ctx) {
                 const now = Date.now();
 
-                // Regenerate grain at ~10fps (every 100ms)
-                if (!state.cachedGrain || now - state.lastGrainUpdate >= state.GRAIN_UPDATE_INTERVAL) {
-                    state.cachedGrain = ctx.createImageData(canvas.width, canvas.height);
+                // Regenerate grain at ~10fps (every 100ms).
+                // Skipped under prefers-reduced-motion (decorative flicker only).
+                if (!REDUCED.matches &&
+                    (!state.cachedGrain || now - state.lastGrainUpdate >= state.GRAIN_UPDATE_INTERVAL)) {
+                    state.cachedGrain = ctx.createImageData(CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
                     const data = state.cachedGrain.data;
 
                     for (let i = 0; i < data.length; i += 4) {
@@ -652,20 +844,30 @@
                     state.lastGrainUpdate = now;
                 }
 
-                ctx.putImageData(state.cachedGrain, 0, 0);
+                // Composite the grain via an offscreen canvas: putImageData would
+                // REPLACE canvas pixels instead of blending over the frame.
+                if (state.cachedGrain) {
+                    if (!state.grainCanvas) {
+                        state.grainCanvas = document.createElement('canvas');
+                        state.grainCanvas.width = CONFIG.CANVAS_WIDTH;
+                        state.grainCanvas.height = CONFIG.CANVAS_HEIGHT;
+                    }
+                    state.grainCanvas.getContext('2d').putImageData(state.cachedGrain, 0, 0);
+                    ctx.drawImage(state.grainCanvas, 0, 0);
+                }
             }
 
-            function drawPhosphorGlow(ctx, canvas) {
+            function drawPhosphorGlow(ctx) {
                 // Central glow
                 const gradient = ctx.createRadialGradient(
-                    canvas.width / 2, canvas.height / 2, 0,
-                    canvas.width / 2, canvas.height / 2, canvas.width
+                    CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2, 0,
+                    CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2, CONFIG.CANVAS_WIDTH
                 );
                 gradient.addColorStop(0, 'rgba(5, 182, 105, 0.05)');
                 gradient.addColorStop(0.5, 'rgba(5, 182, 105, 0.02)');
                 gradient.addColorStop(1, 'rgba(0, 0, 0, 0.3)');
                 ctx.fillStyle = gradient;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
             }
 
             function drawHeader(ctx) {
@@ -896,6 +1098,25 @@
                 ctx.quadraticCurveTo(x, y, x + radius, y);
                 ctx.closePath();
             }
+
+            // ===========================================
+            // PER-THEME SOUND TUNING
+            // ===========================================
+            const TUNING = {
+                key() {
+                    Sound.tone(1900, 0.04, 'sine', 0.10);
+                    Sound.tone(2400, 0.03, 'sine', 0.05);
+                },
+                action() { Sound.tone(1568, 0.10, 'sine', 0.10); },
+                error() {
+                    Sound.tone(196, 0.2, 'square', 0.09);
+                    setTimeout(() => Sound.tone(196, 0.2, 'square', 0.09), 150);
+                },
+                success() {
+                    Sound.tone(1047, 0.09, 'sine', 0.10);
+                    Sound.tone(1568, 0.12, 'sine', 0.10);
+                }
+            };
 
             // ===========================================
             // START APPLICATION

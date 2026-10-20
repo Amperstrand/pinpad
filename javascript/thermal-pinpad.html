@@ -170,6 +170,38 @@
             text-align: center;
             letter-spacing: 1px;
             max-width: 320px;
+            line-height: 1.6;
+        }
+
+        /* ===========================================
+           ACCESSIBILITY
+           =========================================== */
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            margin: -1px;
+            padding: 0;
+            border: 0;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+            clip-path: inset(50%);
+            white-space: nowrap;
+        }
+
+        .btn:focus-visible,
+        .palette-select:focus-visible,
+        [role="application"]:focus-visible {
+            outline: 2px solid var(--accent-cyan);
+            outline-offset: 2px;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
         }
     </style>
 </head>
@@ -180,8 +212,11 @@
     </div>
 
     <div class="container">
-        <canvas id="thermalCanvas" width="320" height="400"></canvas>
-        
+        <div role="application" tabindex="0" aria-label="Thermal keypad. Type digits 0-9 to heat keys, C to clear heat, Enter to inject code." aria-roledescription="keypad">
+            <canvas id="thermalCanvas" width="320" height="400"></canvas>
+        </div>
+        <p id="a11yStatus" role="status" class="visually-hidden"></p>
+
         <div class="status-bar">
             <div class="status-text" id="statusText">READY - Click buttons to simulate presses</div>
         </div>
@@ -196,11 +231,13 @@
                 <option value="ironbow">Ironbow</option>
                 <option value="hotcold">Hot/Cold</option>
             </select>
+            <button class="btn" id="soundBtn" type="button" aria-pressed="true">Sound: On</button>
         </div>
     </div>
 
     <div class="instructions">
-        Brightness indicates recency. Keyboard: 0-9 press, C clears, E/Enter injects code
+        Brightness indicates recency.<br>
+        Keyboard: 0-9 · C clear · Enter/E inject code · D demo · S sound
     </div>
 
     <script>
@@ -211,6 +248,66 @@
 
         (() => {
             'use strict';
+
+            // ===========================================
+            // SHARED SOUND MODULE
+            // unlock() must be called from a user gesture
+            // (pointer/keyboard handler) before any tone.
+            // ===========================================
+            const Sound = (() => {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                let ctx = null, master = null, noiseBuf = null;
+                let enabled = (() => { try { const v = localStorage.getItem('pinpad:sound'); return v === null ? true : v === '1'; } catch (e) { return true; } })();
+                function save() { try { localStorage.setItem('pinpad:sound', enabled ? '1' : '0'); } catch (e) {} }
+                function unlock() {
+                    if (!AC) return;
+                    if (!ctx) {
+                        ctx = new AC();
+                        master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+                        const len = Math.floor(ctx.sampleRate * 0.05);
+                        noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+                        const d = noiseBuf.getChannelData(0);
+                        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+                    }
+                    if (ctx.state === 'suspended') {
+                        const p = ctx.resume();
+                        if (p && typeof p.catch === 'function') p.catch(() => {});
+                    }
+                }
+                function tone(freq, dur, type, peak, slideTo) {
+                    if (!enabled || !ctx || ctx.state !== 'running') return;
+                    const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+                    o.type = type; o.frequency.setValueAtTime(freq, t);
+                    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur * 0.8);
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                    o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+                }
+                function thud(peak, cutoff) { // filtered noise burst = mechanical clunk
+                    if (!enabled || !ctx || ctx.state !== 'running' || !noiseBuf) return;
+                    const t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = noiseBuf;
+                    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+                    const g = ctx.createGain();
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(peak, t + 0.002);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+                    s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + 0.07);
+                }
+                return {
+                    unlock,
+                    tone,
+                    thud,
+                    key()    { TUNING.key(); },     // digit press
+                    action() { TUNING.action(); },  // submit/enter
+                    error()  { TUNING.error(); },
+                    success(){ TUNING.success(); },
+                    toggle() { enabled = !enabled; save(); return enabled; },
+                    get enabled() { return enabled; }
+                };
+            })();
+
+            const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)');
 
             // ===========================================
             // CONFIGURATION CONSTANTS
@@ -431,12 +528,14 @@
 
                 // Film grain (slow update ~10fps)
                 grainImageData: null,
+                grainCanvas: null,
                 lastGrainUpdate: 0,
 
                 // UI references
                 canvas: null,
                 ctx: null,
-                statusText: null
+                statusText: null,
+                a11yStatus: null
             };
 
             // ===========================================
@@ -447,6 +546,10 @@
                 state.canvas = document.getElementById('thermalCanvas');
                 state.ctx = state.canvas.getContext('2d');
                 state.statusText = document.getElementById('statusText');
+                state.a11yStatus = document.getElementById('a11yStatus');
+
+                // Scale backing store for HiDPI displays; draw code stays in logical coords
+                fitCanvas();
 
                 // Initialize HSV-based palette LUTs
                 initializePalettes();
@@ -464,6 +567,25 @@
 
                 // Initial status
                 updateStatus('READY - Click buttons to simulate presses');
+
+                // Initialize sound toggle label from persisted preference
+                syncSoundBtn();
+
+                // Frozen-frame liveliness: enter one code shortly after load so a
+                // fresh screenshot shows heat glow (before any 8s demo interval)
+                setTimeout(enterRandomCode, 800);
+            }
+
+            // ===========================================
+            // HiDPI CANVAS
+            // ===========================================
+            function fitCanvas() {
+                const dpr = Math.min(window.devicePixelRatio || 1, 2);
+                state.canvas.style.width = CONFIG.CANVAS_WIDTH + 'px';
+                state.canvas.style.height = CONFIG.CANVAS_HEIGHT + 'px';
+                state.canvas.width = Math.round(CONFIG.CANVAS_WIDTH * dpr);
+                state.canvas.height = Math.round(CONFIG.CANVAS_HEIGHT * dpr);
+                state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             }
 
             // ===========================================
@@ -476,26 +598,72 @@
                 // Button controls
                 document.getElementById('demoBtn').addEventListener('click', toggleDemoMode);
                 document.getElementById('resetBtn').addEventListener('click', resetHeat);
-                document.getElementById('randomBtn').addEventListener('click', enterRandomCode);
+                document.getElementById('randomBtn').addEventListener('click', () => {
+                    Sound.unlock();
+                    enterRandomCode();
+                });
                 document.getElementById('paletteSelect').addEventListener('change', handlePaletteChange);
+                document.getElementById('soundBtn').addEventListener('click', toggleSound);
                 document.addEventListener('keydown', handleKeyDown);
+
+                // Pause all animation/demo timers while the tab is hidden
+                document.addEventListener('visibilitychange', handleVisibilityChange);
             }
 
             function handleKeyDown(event) {
+                if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+                Sound.unlock();
                 const key = event.key;
+
                 if (/^[0-9]$/.test(key)) {
+                    event.preventDefault();
                     pressButton(key);
                     return;
                 }
 
                 if (key === 'c' || key === 'C') {
+                    event.preventDefault();
                     resetHeat();
                     return;
                 }
 
                 if (key === 'e' || key === 'E' || key === 'Enter') {
+                    event.preventDefault();
                     enterRandomCode();
                     return;
+                }
+
+                if (key === 'd' || key === 'D') {
+                    event.preventDefault();
+                    toggleDemoMode();
+                    return;
+                }
+
+                if (key === 's' || key === 'S') {
+                    event.preventDefault();
+                    toggleSound();
+                }
+            }
+
+            function handleVisibilityChange() {
+                if (document.hidden) {
+                    if (state.animationId !== null) {
+                        cancelAnimationFrame(state.animationId);
+                        state.animationId = null;
+                    }
+                    if (state.demoInterval !== null) {
+                        clearInterval(state.demoInterval);
+                        state.demoInterval = null;
+                    }
+                } else {
+                    state.lastFrameTime = performance.now();
+                    if (state.animationId === null) {
+                        startAnimation();
+                    }
+                    if (state.demoMode && state.demoInterval === null) {
+                        scheduleDemoInterval();
+                    }
                 }
             }
 
@@ -503,6 +671,7 @@
              * Handle click on canvas to detect button press
              */
             function handleCanvasClick(event) {
+                Sound.unlock();
                 const rect = state.canvas.getBoundingClientRect();
                 const x = event.clientX - rect.left;
                 const y = event.clientY - rect.top;
@@ -549,6 +718,7 @@
              */
             function pressButton(label) {
                 state.buttonHeat.set(label, Date.now());
+                Sound.key();
                 updateStatus(`Button "${label}" pressed`);
             }
 
@@ -556,6 +726,7 @@
              * Toggle demo mode on/off
              */
             function toggleDemoMode() {
+                Sound.unlock();
                 state.demoMode = !state.demoMode;
                 const btn = document.getElementById('demoBtn');
 
@@ -580,6 +751,10 @@
                 enterRandomCode();
 
                 // Then every 8 seconds
+                scheduleDemoInterval();
+            }
+
+            function scheduleDemoInterval() {
                 state.demoInterval = setInterval(() => {
                     if (state.demoMode) {
                         enterRandomCode();
@@ -601,6 +776,7 @@
              * Reset all heat signatures
              */
             function resetHeat() {
+                Sound.unlock();
                 CONFIG.BUTTONS.forEach(label => {
                     state.buttonHeat.set(label, null);
                 });
@@ -611,6 +787,7 @@
              * Enter a random 4-digit code
              */
             function enterRandomCode() {
+                Sound.action();
                 const digits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
                 const code = [];
                 
@@ -634,15 +811,32 @@
              * Handle palette selection change
              */
             function handlePaletteChange(event) {
+                Sound.unlock();
                 state.currentPalette = event.target.value;
                 updateStatus(`Palette changed to: ${event.target.options[event.target.selectedIndex].text}`);
             }
 
             /**
-             * Update status text
+             * Toggle sound on/off (persisted)
+             */
+            function toggleSound() {
+                Sound.unlock();
+                Sound.toggle();
+                syncSoundBtn();
+            }
+
+            function syncSoundBtn() {
+                const btn = document.getElementById('soundBtn');
+                btn.textContent = Sound.enabled ? 'Sound: On' : 'Sound: Off';
+                btn.setAttribute('aria-pressed', String(Sound.enabled));
+            }
+
+            /**
+             * Update status text (mirrored to the screen-reader live region)
              */
             function updateStatus(text) {
                 state.statusText.textContent = text;
+                state.a11yStatus.textContent = text;
             }
 
             // ===========================================
@@ -739,72 +933,79 @@
              */
             function render() {
                 const ctx = state.ctx;
-                const canvas = state.canvas;
 
-                // Clear canvas with dark background
+                // Clear canvas with dark background (logical coordinates)
                 ctx.fillStyle = '#050508';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
 
                 // Draw subtle grid/noise background
-                drawBackground(ctx, canvas);
+                drawBackground(ctx);
 
                 // Draw all buttons
                 CONFIG.BUTTONS.forEach((label, index) => {
                     drawButton(ctx, index, label);
                 });
 
-                drawNoise(ctx, canvas);
-                drawScanlines(ctx, canvas);
+                drawNoise(ctx);
+                drawScanlines(ctx);
             }
 
             /**
              * Draw subtle background texture
              */
-            function drawBackground(ctx, canvas) {
+            function drawBackground(ctx) {
+                const w = CONFIG.CANVAS_WIDTH, h = CONFIG.CANVAS_HEIGHT;
+
                 // Dark gradient overlay
-                const gradient = ctx.createRadialGradient(
-                    canvas.width / 2, canvas.height / 2, 0,
-                    canvas.width / 2, canvas.height / 2, canvas.width
-                );
+                const gradient = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w);
                 gradient.addColorStop(0, 'rgba(8, 16, 44, 0.35)');
                 gradient.addColorStop(0.6, 'rgba(4, 10, 30, 0.42)');
                 gradient.addColorStop(1, 'rgba(0, 0, 0, 0.65)');
                 ctx.fillStyle = gradient;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillRect(0, 0, w, h);
 
                 const vignette = ctx.createRadialGradient(
-                    canvas.width / 2, canvas.height / 2, canvas.width * 0.15,
-                    canvas.width / 2, canvas.height / 2, canvas.width * 0.85
+                    w / 2, h / 2, w * 0.15,
+                    w / 2, h / 2, w * 0.85
                 );
                 vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
                 vignette.addColorStop(1, 'rgba(0, 0, 0, 0.45)');
                 ctx.fillStyle = vignette;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillRect(0, 0, w, h);
             }
 
-            function drawNoise(ctx, canvas) {
+            function drawNoise(ctx) {
                 const now = performance.now();
-                
-                // Regenerate grain pattern every ~100ms (10fps)
-                if (!state.grainImageData || now - state.lastGrainUpdate > CONFIG.GRAIN_UPDATE_INTERVAL_MS) {
-                    state.grainImageData = generateFilmGrain(canvas);
+
+                // Regenerate grain pattern every ~100ms (10fps).
+                // Skipped under prefers-reduced-motion (decorative flicker only).
+                if (!REDUCED.matches &&
+                    (!state.grainImageData || now - state.lastGrainUpdate > CONFIG.GRAIN_UPDATE_INTERVAL_MS)) {
+                    state.grainImageData = generateFilmGrain();
                     state.lastGrainUpdate = now;
                 }
-                
-                // Draw cached grain
+
+                // Composite the grain via an offscreen canvas: putImageData would
+                // REPLACE canvas pixels (wiping the frame) instead of blending.
                 if (state.grainImageData) {
-                    ctx.putImageData(state.grainImageData, 0, 0);
+                    if (!state.grainCanvas) {
+                        state.grainCanvas = document.createElement('canvas');
+                        state.grainCanvas.width = CONFIG.CANVAS_WIDTH;
+                        state.grainCanvas.height = CONFIG.CANVAS_HEIGHT;
+                    }
+                    state.grainCanvas.getContext('2d').putImageData(state.grainImageData, 0, 0);
+                    ctx.drawImage(state.grainCanvas, 0, 0);
                 }
             }
 
             /**
              * Generate film grain texture (called at ~10fps)
              */
-            function generateFilmGrain(canvas) {
-                const imageData = state.ctx.createImageData(canvas.width, canvas.height);
+            function generateFilmGrain() {
+                const imageData = state.ctx.createImageData(CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
                 const data = imageData.data;
                 const points = CONFIG.NOISE_POINTS;
-                
+
                 // Clear with transparent
                 for (let i = 0; i < data.length; i += 4) {
                     data[i] = 0;
@@ -812,27 +1013,27 @@
                     data[i + 2] = 0;
                     data[i + 3] = 0;
                 }
-                
+
                 // Add grain points
                 for (let i = 0; i < points; i++) {
-                    const x = Math.floor(Math.random() * canvas.width);
-                    const y = Math.floor(Math.random() * canvas.height);
-                    const idx = (y * canvas.width + x) * 4;
-                    
+                    const x = Math.floor(Math.random() * CONFIG.CANVAS_WIDTH);
+                    const y = Math.floor(Math.random() * CONFIG.CANVAS_HEIGHT);
+                    const idx = (y * CONFIG.CANVAS_WIDTH + x) * 4;
+
                     const glow = 20 + Math.floor(Math.random() * 36);
                     data[idx] = glow;
                     data[idx + 1] = glow + 18;
                     data[idx + 2] = glow + 42;
                     data[idx + 3] = Math.floor(0.08 * 255);
                 }
-                
+
                 return imageData;
             }
 
-            function drawScanlines(ctx, canvas) {
+            function drawScanlines(ctx) {
                 ctx.fillStyle = `rgba(0, 0, 0, ${CONFIG.SCANLINE_ALPHA})`;
-                for (let y = 0; y < canvas.height; y += CONFIG.SCANLINE_STEP) {
-                    ctx.fillRect(0, y, canvas.width, 1);
+                for (let y = 0; y < CONFIG.CANVAS_HEIGHT; y += CONFIG.SCANLINE_STEP) {
+                    ctx.fillRect(0, y, CONFIG.CANVAS_WIDTH, 1);
                 }
             }
 
@@ -994,6 +1195,16 @@
                 ctx.quadraticCurveTo(x, y, x + radius, y);
                 ctx.closePath();
             }
+
+            // ===========================================
+            // PER-THEME SOUND TUNING
+            // ===========================================
+            const TUNING = {
+                key()     { Sound.tone(1180, 0.045, 'square', 0.08); },
+                action()  { Sound.tone(880, 0.09, 'square', 0.10); },
+                error()   { Sound.tone(160, 0.28, 'sawtooth', 0.10); },
+                success() { Sound.tone(1319, 0.12, 'square', 0.10); }
+            };
 
             // ===========================================
             // START APPLICATION

@@ -216,6 +216,58 @@
                 height: 15px;
             }
         }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding-top: 6px;
+            margin-top: 8px;
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--dim-green);
+        }
+
+        .term-btn {
+            font: inherit;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            background: transparent;
+            color: var(--phosphor-green);
+            border: 1px solid var(--dim-green);
+            border-radius: 4px;
+            padding: 3px 10px;
+            cursor: pointer;
+        }
+
+        .term-btn:hover {
+            color: var(--bright-green);
+            border-color: var(--phosphor-green);
+        }
+
+        .term-btn:focus-visible {
+            outline: 2px solid var(--bright-green);
+            outline-offset: 2px;
+        }
+
+        .reduced-motion .terminal::before,
+        .reduced-motion .flicker,
+        .reduced-motion .phosphor-persist {
+            animation: none;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -227,6 +279,10 @@
             <div class="prompt-row">
                 <span class="prompt-label">NORAD&gt;</span>
                 <span id="promptInput" class="prompt-input"></span><span id="cursor" class="cursor" aria-hidden="true"></span>
+            </div>
+            <div class="controls">
+                <span id="keyHint">Type a command · Enter submit · Backspace edit</span>
+                <button id="soundBtn" class="term-btn" type="button" aria-pressed="true">Sound: On</button>
             </div>
         </section>
         <div class="crt-curve"></div>
@@ -249,8 +305,76 @@
                 typeDelayMs: 30,
                 typeVarianceMs: 15,
                 newlinePauseMs: 170,
+                bootTypeDelayMs: 2,
+                bootVarianceMs: 2,
+                bootNewlinePauseMs: 10,
+                hookTypeDelayMs: 18,
+                hookVarianceMs: 10,
                 cursorBlinkMinMs: 530,
                 cursorBlinkMaxMs: 1000,
+            };
+
+            const Sound = (() => {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                let ctx = null, master = null, noiseBuf = null;
+                let enabled = (() => { try { const v = localStorage.getItem("pinpad:sound"); return v === null ? true : v === "1"; } catch (e) { return true; } })();
+                function save() { try { localStorage.setItem("pinpad:sound", enabled ? "1" : "0"); } catch (e) {} }
+                function unlock() {
+                    if (!AC) return;
+                    if (!ctx) {
+                        ctx = new AC();
+                        master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+                        const len = Math.floor(ctx.sampleRate * 0.05);
+                        noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+                        const d = noiseBuf.getChannelData(0);
+                        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+                    }
+                    if (ctx.state === "suspended") ctx.resume();
+                }
+                function tone(freq, dur, type, peak, slideTo) {
+                    if (!enabled || !ctx || ctx.state !== "running") return;
+                    const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+                    o.type = type; o.frequency.setValueAtTime(freq, t);
+                    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur * 0.8);
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                    o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+                }
+                function thud(peak, cutoff) {
+                    if (!enabled || !ctx || ctx.state !== "running" || !noiseBuf) return;
+                    const t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = noiseBuf;
+                    const f = ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = cutoff;
+                    const g = ctx.createGain();
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(peak, t + 0.002);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+                    s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + 0.07);
+                }
+                return {
+                    unlock,
+                    tone,
+                    thud,
+                    key()    { TUNING.key(); },
+                    action() { TUNING.action(); },
+                    error()  { TUNING.error(); },
+                    success(){ TUNING.success(); },
+                    toggle() { enabled = !enabled; save(); return enabled; },
+                    get enabled() { return enabled; }
+                };
+            })();
+
+            const TUNING = {
+                key() { Sound.tone(1050, 0.09, "square", 0.07); },
+                action() {
+                    Sound.tone(1050, 0.09, "square", 0.07);
+                    setTimeout(() => Sound.tone(1400, 0.09, "square", 0.07), 120);
+                },
+                error() { Sound.tone(240, 0.18, "square", 0.08); },
+                success() {
+                    Sound.tone(523, 0.1, "square", 0.08);
+                    Sound.tone(659, 0.14, "square", 0.08);
+                }
             };
 
             const MENU = [
@@ -267,6 +391,7 @@
             const outputEl = document.getElementById("output");
             const promptInputEl = document.getElementById("promptInput");
             const cursorEl = document.getElementById("cursor");
+            const soundBtn = document.getElementById("soundBtn");
 
             const state = {
                 input: "",
@@ -274,11 +399,14 @@
                 selectedGame: null,
                 blinkVisible: true,
                 blinkTimer: null,
+                paused: false,
             };
 
-            function jitterDelay() {
-                const variance = (Math.random() * 2 - 1) * TIMING.typeVarianceMs;
-                return Math.max(8, Math.round(TIMING.typeDelayMs + variance));
+            const resumeWaiters = [];
+
+            function jitterDelay(baseMs, varianceMs) {
+                const variance = (Math.random() * 2 - 1) * varianceMs;
+                return Math.max(2, Math.round(baseMs + variance));
             }
 
             function appendLine(initialText = "", className = "") {
@@ -291,27 +419,44 @@
             }
 
             function wait(ms) {
-                return new Promise((resolve) => setTimeout(resolve, ms));
+                return new Promise((resolve) => {
+                    if (state.paused) {
+                        resumeWaiters.push(() => { wait(ms).then(resolve); });
+                        return;
+                    }
+                    setTimeout(() => {
+                        if (state.paused) {
+                            resumeWaiters.push(resolve);
+                        } else {
+                            resolve();
+                        }
+                    }, ms);
+                });
             }
 
-            async function typeToLine(lineEl, text) {
+            async function typeToLine(lineEl, text, delayMs, varianceMs) {
                 for (const ch of text) {
                     lineEl.textContent += ch;
                     outputEl.scrollTop = outputEl.scrollHeight;
-                    await wait(jitterDelay());
+                    await wait(jitterDelay(delayMs, varianceMs));
                 }
             }
 
-            async function typeLine(text, className = "") {
+            async function typeLine(text, className = "", fast = false) {
                 const line = appendLine("", className);
-                await typeToLine(line, text);
-                await wait(TIMING.newlinePauseMs);
+                await typeToLine(
+                    line,
+                    text,
+                    fast ? TIMING.bootTypeDelayMs : TIMING.typeDelayMs,
+                    fast ? TIMING.bootVarianceMs : TIMING.typeVarianceMs
+                );
+                await wait(fast ? TIMING.bootNewlinePauseMs : TIMING.newlinePauseMs);
                 return line;
             }
 
-            async function typeBlock(lines, className = "") {
+            async function typeBlock(lines, className = "", fast = false) {
                 for (const line of lines) {
-                    await typeLine(line, className);
+                    await typeLine(line, className, fast);
                 }
             }
 
@@ -358,8 +503,8 @@
                 return null;
             }
 
-            async function showMenu() {
-                await typeBlock(MENU);
+            async function showMenu(fast = false) {
+                await typeBlock(MENU, "", fast);
             }
 
             async function handleCommand(rawInput) {
@@ -368,6 +513,7 @@
                 appendLine(`NORAD> ${command || ""}`);
 
                 if (!command) {
+                    Sound.error();
                     await typeLine("ENTER COMMAND. TRY HELP.", "dim");
                     return;
                 }
@@ -394,6 +540,7 @@
                     const token = upper.replace("SELECT", "").trim();
                     const selection = parseSelection(token);
                     if (selection === null) {
+                        Sound.error();
                         await typeLine("INVALID SELECTION. CHOOSE 1-4.", "dim");
                         return;
                     }
@@ -404,6 +551,7 @@
                         3: "CHESS",
                         4: "FIGHTER COMBAT",
                     };
+                    Sound.success();
                     await typeLine(`SELECTION ACCEPTED: ${names[selection]}`, "highlight");
                     await typeLine("TYPE PLAY TO EXECUTE.", "dim");
                     return;
@@ -417,11 +565,13 @@
                     }
 
                     if (selection === null || selection === undefined) {
+                        Sound.error();
                         await typeLine("NO GAME SELECTED. USE SELECT <1-4>.", "dim");
                         return;
                     }
 
                     if (selection === 1) {
+                        Sound.success();
                         await typeBlock([
                             "SIMULATION BOOTSTRAP: GLOBAL THERMONUCLEAR WAR",
                             "CONNECTING TO WOPR...",
@@ -436,6 +586,7 @@
                         3: "CHESS",
                         4: "FIGHTER COMBAT",
                     };
+                    Sound.error();
                     await typeLine(`${names[selection]} NOT INSTALLED ON THIS NODE.`, "dim");
                     await typeLine("RECOMMENDED: GLOBAL THERMONUCLEAR WAR", "highlight");
                     return;
@@ -461,24 +612,33 @@
                     return;
                 }
 
+                Sound.error();
                 await typeLine(`UNKNOWN COMMAND: ${upper}`, "dim");
                 await typeLine("TYPE HELP FOR COMMAND INDEX.", "dim");
             }
 
             function setupKeyboard() {
                 document.addEventListener("keydown", async (event) => {
+                    if (event.ctrlKey || event.metaKey || event.altKey) {
+                        return;
+                    }
+
                     if (state.isTyping) {
                         return;
                     }
 
                     if (event.key === "Backspace") {
                         event.preventDefault();
+                        Sound.unlock();
+                        Sound.key();
                         setPromptInput(state.input.slice(0, -1));
                         return;
                     }
 
                     if (event.key === "Enter") {
                         event.preventDefault();
+                        Sound.unlock();
+                        Sound.action();
                         const submitted = state.input;
                         setPromptInput("");
                         state.isTyping = true;
@@ -490,28 +650,83 @@
                     if (event.key.length === 1) {
                         const code = event.key.charCodeAt(0);
                         if (code >= 32 && code <= 126) {
+                            Sound.unlock();
+                            Sound.key();
                             setPromptInput(state.input + event.key.toUpperCase());
                         }
                     }
                 });
             }
 
-            async function boot() {
+            async function autoTypeHook() {
+                if (state.input !== "") {
+                    return;
+                }
                 state.isTyping = true;
-                await typeLine("", "dim");
-                await typeLine("NORAD REMOTE STRATEGIC TERMINAL", "highlight");
-                await typeLine("IMSAI 8080 CONNECTED", "dim");
-                await typeLine("SECURITY LEVEL: SIMULATION / TRAINING", "dim");
-                await typeLine("TYPE HELP FOR COMMAND LIST", "dim");
-                await typeLine("", "dim");
-                await showMenu();
+                await wait(60);
+                for (const ch of "SHALL WE PLAY A GAME?") {
+                    setPromptInput(state.input + ch);
+                    await wait(jitterDelay(TIMING.hookTypeDelayMs, TIMING.hookVarianceMs));
+                }
                 state.isTyping = false;
             }
+
+            async function boot() {
+                state.isTyping = true;
+                await typeLine("", "dim", true);
+                await typeLine("NORAD REMOTE STRATEGIC TERMINAL", "highlight", true);
+                await typeLine("IMSAI 8080 CONNECTED", "dim", true);
+                await typeLine("SECURITY LEVEL: SIMULATION / TRAINING", "dim", true);
+                await typeLine("TYPE HELP FOR COMMAND LIST", "dim", true);
+                await typeLine("", "dim", true);
+                await showMenu(true);
+                state.isTyping = false;
+                await autoTypeHook();
+            }
+
+            function syncSoundBtn() {
+                soundBtn.textContent = Sound.enabled ? "Sound: On" : "Sound: Off";
+                soundBtn.setAttribute("aria-pressed", String(Sound.enabled));
+            }
+
+            const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)");
+            function applyReducedMotion() {
+                document.documentElement.classList.toggle("reduced-motion", REDUCED.matches);
+            }
+            if (typeof REDUCED.addEventListener === "function") {
+                REDUCED.addEventListener("change", applyReducedMotion);
+            }
+            applyReducedMotion();
+
+            document.addEventListener("visibilitychange", () => {
+                if (document.hidden) {
+                    state.paused = true;
+                    if (state.blinkTimer) {
+                        clearTimeout(state.blinkTimer);
+                        state.blinkTimer = null;
+                    }
+                } else {
+                    state.paused = false;
+                    const waiters = resumeWaiters.splice(0);
+                    waiters.forEach((resume) => resume());
+                    state.blinkVisible = true;
+                    cursorEl.style.visibility = "visible";
+                    startCursorBlink();
+                }
+            });
 
             paintPalette();
             setupKeyboard();
             startCursorBlink();
             boot();
+
+            soundBtn.addEventListener("click", () => {
+                Sound.unlock();
+                Sound.toggle();
+                syncSoundBtn();
+                soundBtn.blur();
+            });
+            syncSoundBtn();
         })();
     </script>
 </body>

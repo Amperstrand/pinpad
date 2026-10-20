@@ -3,8 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pinpad - Movie & Game Keypad Effects</title>
-    <meta name="description" content="Collection of 8 iconic keypad implementations from movies and games: Splinter Cell thermal vision, Alien Nostromo, Mr. Robot, WarGames NORAD, Deus Ex HR, Dead Space RIG, and Tron. Available in JavaScript, Python/LVGL, and Rust/embedded-graphics.">
+    <title>Pinpad — Movie &amp; Game Keypad Effects</title>
+    <meta name="description" content="Collection of 8 iconic keypad implementations from movies and games: Splinter Cell thermal vision, Alien: Isolation Sevastolink, Alien Nostromo, Mr. Robot, WarGames NORAD, Deus Ex HR, Dead Space RIG, and Tron. Available in JavaScript, Python/LVGL, and Rust/embedded-graphics.">
+    <link rel="canonical" href="https://amperstrand.github.io/pinpad/">
+    <meta name="theme-color" content="#030810">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Pinpad">
+    <meta property="og:title" content="Pinpad — Movie &amp; Game Keypad Effects">
+    <meta property="og:description" content="8 iconic keypad interfaces from movies and games, in JavaScript, Python and Rust.">
+    <meta property="og:url" content="https://amperstrand.github.io/pinpad/">
+    <meta property="og:image" content="https://amperstrand.github.io/pinpad/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Gallery of 8 retro keypad interfaces — thermal, CRT terminals and holograms">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Pinpad — Movie &amp; Game Keypad Effects">
+    <meta name="twitter:description" content="Splinter Cell thermal vision, Alien Sevastolink, WOPR, Sarif, RIG, Tron — playable in-browser.">
+    <meta name="twitter:image" content="https://amperstrand.github.io/pinpad/og-image.png">
     <style>
         :root {
             --bg-dark: #050f1e;
@@ -29,6 +47,43 @@
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :focus-visible {
+            outline: 2px solid var(--text-cyan);
+            outline-offset: 3px;
+        }
+
+        .skip-link {
+            position: absolute;
+            top: 0;
+            left: -9999px;
+            z-index: 1000;
+            padding: 12px 24px;
+            background: var(--bg-panel);
+            color: var(--text-cyan);
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            text-decoration: none;
+            border: 2px solid var(--text-cyan);
+            border-radius: 0 0 8px 0;
+        }
+
+        .skip-link:focus {
+            left: 0;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
@@ -229,6 +284,7 @@
             display: block;
             width: 100%;
             text-align: center;
+            min-height: 44px;
             padding: 14px 24px;
             font-size: 0.9rem;
             font-weight: 600;
@@ -362,30 +418,49 @@
         .footer a { color: var(--text-cyan); text-decoration: none; }
         .footer a:hover { text-decoration: underline; }
 
+        #cross-platform,
+        .github-section,
+        .footer {
+            content-visibility: auto;
+            contain-intrinsic-size: auto 600px;
+        }
+
         @media (max-width: 768px) {
             .header { padding: 40px 20px 30px; }
             .section-title { font-size: 1.25rem; }
             .pinpad-gallery { grid-template-columns: 1fr; max-width: 360px; margin: 0 auto; }
             .platforms { grid-template-columns: 1fr; }
         }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
     </style>
 </head>
 <body>
+    <a class="skip-link" href="#main">Skip to content</a>
     <header class="header">
         <h1>Pinpad</h1>
-        <p class="subtitle">Movie & Game Keypad Effects</p>
-        <p class="tagline">Authentic recreations of 8 iconic keypad interfaces from Splinter Cell, Alien, Mr. Robot, WarGames, Deus Ex, Dead Space, and Tron — built for web, embedded Linux, and bare-metal ARM</p>
+        <p class="subtitle">Movie &amp; Game Keypad Effects</p>
+        <p class="tagline">Authentic recreations of 8 iconic keypad interfaces from Splinter Cell, Alien, Alien: Isolation, Mr. Robot, WarGames, Deus Ex, Dead Space, and Tron — built for web, embedded Linux, and bare-metal ARM</p>
     </header>
 
-    <main class="container">
+    <main class="container" id="main" tabindex="-1">
         <section id="screenshots">
             <h2 class="section-title">Choose Your Pinpad</h2>
             <div class="pinpad-gallery">
                 <div class="pinpad-card thermal">
                     <div class="pinpad-preview">
-                        <img src="screenshots/thermal-pinpad-js.png" alt="Splinter Cell Thermal Pinpad" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <img src="screenshots/thermal-pinpad-js.png" alt="Splinter Cell Thermal Pinpad" width="400" height="500" fetchpriority="high" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div class="placeholder" style="display: none; flex-direction: column;">
-                            <div class="placeholder-icon">🔥</div>
+                            <div class="placeholder-icon" aria-hidden="true">🔥</div>
                             <span class="placeholder-text">Thermal Vision Effect</span>
                         </div>
                     </div>
@@ -398,15 +473,15 @@
                             <li>Layered thermal bloom + sensor texture</li>
                             <li>4 color palettes</li>
                         </ul>
-                        <a href="demos/thermal-pinpad.html" class="demo-btn">▶ Try Demo</a>
+                        <a href="demos/thermal-pinpad.html" class="demo-btn"><span aria-hidden="true">▶</span> Try Demo<span class="sr-only">: Thermal Vision Pinpad</span></a>
                     </div>
                 </div>
 
                 <div class="pinpad-card sevastolink">
                     <div class="pinpad-preview">
-                        <img src="screenshots/sevastolink-pinpad-js.png" alt="Alien Isolation Sevastolink" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <img src="screenshots/sevastolink-pinpad-js.png" alt="Alien Isolation Sevastolink" width="400" height="500" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div class="placeholder" style="display: none; flex-direction: column;">
-                            <div class="placeholder-icon">👽</div>
+                            <div class="placeholder-icon" aria-hidden="true">👽</div>
                             <span class="placeholder-text">CRT Terminal Interface</span>
                         </div>
                     </div>
@@ -419,15 +494,15 @@
                             <li>Screen curvature simulation</li>
                             <li>Seegson green palette</li>
                         </ul>
-                        <a href="demos/sevastolink-pinpad.html" class="demo-btn">▶ Try Demo</a>
+                        <a href="demos/sevastolink-pinpad.html" class="demo-btn"><span aria-hidden="true">▶</span> Try Demo<span class="sr-only">: Sevastolink Terminal</span></a>
                     </div>
                 </div>
 
                 <div class="pinpad-card mr-robot">
                     <div class="pinpad-preview">
-                        <img src="screenshots/mr-robot-pinpad-js.png" alt="Mr. Robot FBI Keypad" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <img src="screenshots/mr-robot-pinpad-js.png" alt="Mr. Robot FBI Keypad" width="400" height="500" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div class="placeholder" style="display: none; flex-direction: column;">
-                            <div class="placeholder-icon">🎭</div>
+                            <div class="placeholder-icon" aria-hidden="true">🎭</div>
                             <span class="placeholder-text">Hacker Terminal</span>
                         </div>
                     </div>
@@ -440,15 +515,15 @@
                             <li>Terminal typing effect</li>
                             <li>fsociety aesthetic</li>
                         </ul>
-                        <a href="demos/mr-robot-pinpad.html" class="demo-btn">▶ Try Demo</a>
+                        <a href="demos/mr-robot-pinpad.html" class="demo-btn"><span aria-hidden="true">▶</span> Try Demo<span class="sr-only">: FBI Keypad</span></a>
                     </div>
                 </div>
 
                 <div class="pinpad-card nostromo">
                     <div class="pinpad-preview">
-                        <img src="screenshots/nostromo-pinpad-js.png" alt="Alien Nostromo Keypad" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <img src="screenshots/nostromo-pinpad-js.png" alt="Alien Nostromo Keypad" width="1462" height="879" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div class="placeholder" style="display: none; flex-direction: column;">
-                            <div class="placeholder-icon">🚀</div>
+                            <div class="placeholder-icon" aria-hidden="true">🚀</div>
                             <span class="placeholder-text">Nostromo Interface</span>
                         </div>
                     </div>
@@ -461,15 +536,15 @@
                             <li>Deterministic grime texture</li>
                             <li>3D button depth</li>
                         </ul>
-                        <a href="demos/nostromo-pinpad.html" class="demo-btn">▶ Try Demo</a>
+                        <a href="demos/nostromo-pinpad.html" class="demo-btn"><span aria-hidden="true">▶</span> Try Demo<span class="sr-only">: Nostromo Keypad</span></a>
                     </div>
                 </div>
 
                 <div class="pinpad-card wargames">
                     <div class="pinpad-preview">
-                        <img src="screenshots/wargames-pinpad-js.png" alt="WarGames NORAD Terminal" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <img src="screenshots/wargames-pinpad-js.png" alt="WarGames NORAD Terminal" width="1462" height="879" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div class="placeholder" style="display: none; flex-direction: column;">
-                            <div class="placeholder-icon">💻</div>
+                            <div class="placeholder-icon" aria-hidden="true">💻</div>
                             <span class="placeholder-text">WOPR Terminal</span>
                         </div>
                     </div>
@@ -482,15 +557,15 @@
                             <li>Screen flicker effect</li>
                             <li>Interactive command mode</li>
                         </ul>
-                        <a href="demos/wargames-pinpad.html" class="demo-btn">▶ Try Demo</a>
+                        <a href="demos/wargames-pinpad.html" class="demo-btn"><span aria-hidden="true">▶</span> Try Demo<span class="sr-only">: NORAD Terminal</span></a>
                     </div>
                 </div>
 
                 <div class="pinpad-card deusex">
                     <div class="pinpad-preview">
-                        <img src="screenshots/deusex-pinpad-js.png" alt="Deus Ex HR Keypad" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <img src="screenshots/deusex-pinpad-js.png" alt="Deus Ex HR Keypad" width="1462" height="879" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div class="placeholder" style="display: none; flex-direction: column;">
-                            <div class="placeholder-icon">🦿</div>
+                            <div class="placeholder-icon" aria-hidden="true">🦿</div>
                             <span class="placeholder-text">Augmented Interface</span>
                         </div>
                     </div>
@@ -503,15 +578,15 @@
                             <li>Holographic glow layers</li>
                             <li>CSS timing variables</li>
                         </ul>
-                        <a href="demos/deusex-pinpad.html" class="demo-btn">▶ Try Demo</a>
+                        <a href="demos/deusex-pinpad.html" class="demo-btn"><span aria-hidden="true">▶</span> Try Demo<span class="sr-only">: Sarif Industries Keypad</span></a>
                     </div>
                 </div>
 
                 <div class="pinpad-card deadspace">
                     <div class="pinpad-preview">
-                        <img src="screenshots/deadspace-pinpad-js.png" alt="Dead Space RIG Interface" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <img src="screenshots/deadspace-pinpad-js.png" alt="Dead Space RIG Interface" width="1462" height="879" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div class="placeholder" style="display: none; flex-direction: column;">
-                            <div class="placeholder-icon">⚔️</div>
+                            <div class="placeholder-icon" aria-hidden="true">⚔️</div>
                             <span class="placeholder-text">RIG Interface</span>
                         </div>
                     </div>
@@ -524,15 +599,15 @@
                             <li>Edge chromatic aberration</li>
                             <li>Instability glitch decay</li>
                         </ul>
-                        <a href="demos/deadspace-pinpad.html" class="demo-btn">▶ Try Demo</a>
+                        <a href="demos/deadspace-pinpad.html" class="demo-btn"><span aria-hidden="true">▶</span> Try Demo<span class="sr-only">: USG Ishimura Keypad</span></a>
                     </div>
                 </div>
 
                 <div class="pinpad-card tron">
                     <div class="pinpad-preview">
-                        <img src="screenshots/tron-pinpad-js.png" alt="Tron Keypad" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <img src="screenshots/tron-pinpad-js.png" alt="Tron Keypad" width="1462" height="879" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         <div class="placeholder" style="display: none; flex-direction: column;">
-                            <div class="placeholder-icon">💠</div>
+                            <div class="placeholder-icon" aria-hidden="true">💠</div>
                             <span class="placeholder-text">Grid Interface</span>
                         </div>
                     </div>
@@ -545,31 +620,31 @@
                             <li>Circuit trace pulse</li>
                             <li>Multi-layer bloom</li>
                         </ul>
-                        <a href="demos/tron-pinpad.html" class="demo-btn">▶ Try Demo</a>
+                        <a href="demos/tron-pinpad.html" class="demo-btn"><span aria-hidden="true">▶</span> Try Demo<span class="sr-only">: ENCOM Grid Keypad</span></a>
                     </div>
                 </div>
             </div>
         </section>
 
-        <section>
+        <section id="cross-platform">
             <h2 class="section-title">Cross-Platform Support</h2>
             <div class="platforms">
                 <div class="platform-card">
-                    <div class="platform-icon">🌐</div>
+                    <div class="platform-icon" aria-hidden="true">🌐</div>
                     <h3>JavaScript (Web)</h3>
-                    <p>Open in any browser - no dependencies required. Pure HTML5 Canvas with 60fps animation.</p>
+                    <p>Open in any browser - no dependencies required. Canvas &amp; CSS animations, zero dependencies.</p>
                     <code>Open *.html in browser</code>
                 </div>
 
                 <div class="platform-card">
-                    <div class="platform-icon">🐍</div>
+                    <div class="platform-icon" aria-hidden="true">🐍</div>
                     <h3>Python (LVGL/pygame)</h3>
                     <p>For embedded Linux (Raspberry Pi) with LVGL, or desktop with pygame.</p>
                     <code>pip install -r requirements.txt<br>python lvgl_demo.py</code>
                 </div>
 
                 <div class="platform-card">
-                    <div class="platform-icon">🦀</div>
+                    <div class="platform-icon" aria-hidden="true">🦀</div>
                     <h3>Rust (embedded-graphics)</h3>
                     <p>For bare-metal ARM systems like STM32F469. No OS required, no_std compatible.</p>
                     <code>cargo run --features simulator<br>cargo build --release</code>
@@ -579,7 +654,7 @@
 
         <section class="github-section">
             <a href="https://github.com/Amperstrand/pinpad" class="github-btn" target="_blank" rel="noopener noreferrer">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                     <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
                 </svg>
                 View on GitHub
@@ -588,7 +663,7 @@
     </main>
 
     <footer class="footer">
-        <p>Built with ❤️ for embedded developers • Inspired by <a href="https://splintercell.fandom.com/wiki/Thermal_vision" target="_blank">Splinter Cell</a>, <a href="https://www.alienisolation.com/" target="_blank">Alien</a>, <a href="https://www.usanetwork.com/mrrobot" target="_blank">Mr. Robot</a>, <a href="https://www.imdb.com/title/tt0086567/" target="_blank">WarGames</a>, <a href="https://www.eidosmontreal.com/games/deus-ex-human-revolution/" target="_blank">Deus Ex</a>, <a href="https://www.ea.com/games/dead-space" target="_blank">Dead Space</a>, and <a href="https://movies.disney.com/tron" target="_blank">Tron</a></p>
+        <p>Built with <span aria-hidden="true">❤️</span> for embedded developers • Inspired by <a href="https://splintercell.fandom.com/wiki/Thermal_vision" target="_blank" rel="noopener noreferrer">Splinter Cell</a>, <a href="https://www.alienisolation.com/" target="_blank" rel="noopener noreferrer">Alien</a>, <a href="https://www.usanetwork.com/mrrobot" target="_blank" rel="noopener noreferrer">Mr. Robot</a>, <a href="https://www.imdb.com/title/tt0086567/" target="_blank" rel="noopener noreferrer">WarGames</a>, <a href="https://www.eidosmontreal.com/games/deus-ex-human-revolution/" target="_blank" rel="noopener noreferrer">Deus Ex</a>, <a href="https://www.ea.com/games/dead-space" target="_blank" rel="noopener noreferrer">Dead Space</a>, and <a href="https://movies.disney.com/tron" target="_blank" rel="noopener noreferrer">Tron</a></p>
     </footer>
 </body>
 </html>

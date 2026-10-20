@@ -202,9 +202,61 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            margin-top: 14px;
+        }
+
+        .btn {
+            border: 1px solid rgba(0, 255, 255, 0.45);
+            border-radius: 10px;
+            background: rgba(0, 71, 171, 0.25);
+            color: var(--text-blue);
+            font-family: inherit;
+            font-size: 11px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            padding: 8px 16px;
+            cursor: pointer;
+            transition: border-color 120ms linear, box-shadow 120ms linear, color 120ms linear;
+        }
+
+        .btn:hover {
+            border-color: var(--primary-cyan);
+            color: var(--primary-cyan);
+            box-shadow: 0 0 14px rgba(0, 255, 255, 0.35);
+        }
+
+        .btn:focus-visible {
+            outline: 2px solid var(--primary-cyan);
+            outline-offset: 2px;
+        }
+
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            margin: -1px;
+            padding: 0;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
 <body>
+    <p id="a11yStatus" role="status" aria-live="polite" class="visually-hidden"></p>
     <div class="rig-shell" id="rigShell">
         <div class="header">
             <span>USG ISHIMURA / RIG HOLO-UI</span>
@@ -231,9 +283,70 @@
         <div class="footer" id="footerText">ARROWS/WASD MOVE | ENTER INTERACT | SPACE GLITCH PING</div>
     </div>
 
+    <div class="controls">
+        <button class="btn" id="soundBtn" type="button" aria-pressed="true">Sound: On</button>
+    </div>
+
     <script>
         (() => {
             "use strict";
+
+            const Sound = (() => {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                let ctx = null, master = null, noiseBuf = null;
+                let enabled = (() => { try { const v = localStorage.getItem('pinpad:sound'); return v === null ? true : v === '1'; } catch (e) { return true; } })();
+                function save() { try { localStorage.setItem('pinpad:sound', enabled ? '1' : '0'); } catch (e) {} }
+                function unlock() {
+                    if (!AC) return;
+                    if (!ctx) {
+                        ctx = new AC();
+                        master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+                        const len = Math.floor(ctx.sampleRate * 0.05);
+                        noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+                        const d = noiseBuf.getChannelData(0);
+                        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+                    }
+                    if (ctx.state === 'suspended') ctx.resume();
+                }
+                function tone(freq, dur, type, peak, slideTo) {
+                    if (!enabled || !ctx || ctx.state !== 'running') return;
+                    const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+                    o.type = type; o.frequency.setValueAtTime(freq, t);
+                    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur * 0.8);
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                    o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+                }
+                function thud(peak, cutoff) {
+                    if (!enabled || !ctx || ctx.state !== 'running' || !noiseBuf) return;
+                    const t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = noiseBuf;
+                    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+                    const g = ctx.createGain();
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(peak, t + 0.002);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+                    s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + 0.07);
+                }
+                return {
+                    unlock, tone, thud,
+                    key()    { TUNING.key(); },
+                    action() { TUNING.action(); },
+                    error()  { TUNING.error(); },
+                    success(){ TUNING.success(); },
+                    toggle() { enabled = !enabled; save(); return enabled; },
+                    get enabled() { return enabled; }
+                };
+            })();
+
+            const TUNING = {
+                key()     { Sound.tone(600, 0.08, "sine", 0.09, 900); },
+                action()  { Sound.tone(700, 0.09, "sine", 0.10, 1000); },
+                error()   { Sound.tone(320, 0.20, "sawtooth", 0.09, 180); },
+                success() { Sound.tone(659, 0.09, "sine", 0.10); Sound.tone(830, 0.13, "sine", 0.10); },
+            };
+
+            const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)");
 
             const COLORS = {
                 primaryCyan: "#00FFFF",
@@ -262,6 +375,8 @@
             const stasisFill = document.getElementById("stasisFill");
             const healthText = document.getElementById("healthText");
             const stasisText = document.getElementById("stasisText");
+            const soundBtn = document.getElementById("soundBtn");
+            const a11yStatus = document.getElementById("a11yStatus");
 
             const glyphs = ["--", "PL", "SM", "TK", "ST", "NO", "MD", "AT", "SE", "BA", "EN", "RG", "MP", "HL", "DM", "RX"];
             const slots = [];
@@ -269,6 +384,10 @@
             let health = 82;
             let stasis = 61;
             let unstableFrames = 0;
+
+            function announce(text) {
+                a11yStatus.textContent = text;
+            }
 
             document.documentElement.style.setProperty("--holo-opacity", `${EFFECTS.holoOpacity}`);
             document.documentElement.style.setProperty("--scanline-dark", `${EFFECTS.scanlineDark}`);
@@ -292,6 +411,7 @@
                     slot.classList.toggle("selected", idx === selectedIndex);
                 });
                 footerText.textContent = `SELECTED SLOT ${selectedIndex + 1} / ${glyphs[selectedIndex]} | ARROWS/WASD MOVE | ENTER INTERACT | SPACE GLITCH PING`;
+                announce(`Slot ${selectedIndex + 1}, ${glyphs[selectedIndex]}, selected`);
             }
 
             function stepSelection(dx, dy) {
@@ -300,6 +420,7 @@
                 const nextRow = (row + dy + GRID_ROWS) % GRID_ROWS;
                 const nextCol = (col + dx + GRID_COLS) % GRID_COLS;
                 selectedIndex = nextRow * GRID_COLS + nextCol;
+                Sound.key();
                 updateSelection();
             }
 
@@ -309,14 +430,19 @@
                 health = Math.max(18, Math.min(100, health + Math.round((Math.random() - 0.5) * 6)));
                 stasis = Math.max(10, Math.min(100, stasis + Math.round((Math.random() - 0.4) * 8)));
                 renderGauges();
+                Sound.action();
+                announce(`Synced ${glyphs[selectedIndex]}. Health ${health} percent, stasis ${stasis} percent.`);
             }
 
             function glitchPing() {
                 modeLabel.textContent = "HOLO DESYNC";
                 modeLabel.style.color = COLORS.alertRed;
                 unstableFrames = 48;
+                Sound.error();
+                announce("Hologram desync");
+                if (REDUCED.matches) return;
                 for (let i = 0; i < 14; i += 1) {
-                    setTimeout(applyJitter, i * 22);
+                    setTimeout(() => { if (!document.hidden) applyJitter(); }, i * 22);
                 }
             }
 
@@ -352,6 +478,10 @@
             }
 
             function handleKeyDown(event) {
+                if (event.ctrlKey || event.metaKey || event.altKey) return;
+                if (event.target === soundBtn) return;
+                Sound.unlock();
+
                 const key = event.key.toLowerCase();
                 if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d", "enter", " "].includes(key)) {
                     event.preventDefault();
@@ -365,25 +495,61 @@
                 if (key === " ") glitchPing();
             }
 
-            function animate() {
-                applyJitter();
-                applyChromaticAberration();
-                const pulse = 0.35 + Math.random() * 0.65;
-                rigShell.style.setProperty("--volumetric-pulse", pulse.toFixed(3));
+            const TICK_MS = 1000 / 30; // throttle CSS-var mutations to ~30fps
+            let animationId = null;
+            let lastTick = 0;
+
+            function animate(now) {
+                animationId = requestAnimationFrame(animate);
+                if (now - lastTick < TICK_MS) return;
+                lastTick = now;
+
+                if (!REDUCED.matches) {
+                    applyJitter();
+                    applyChromaticAberration();
+                    const pulse = 0.35 + Math.random() * 0.65;
+                    rigShell.style.setProperty("--volumetric-pulse", pulse.toFixed(3));
+                }
+
                 if (unstableFrames > 0) {
-                    unstableFrames -= 1;
-                    if (unstableFrames === 0) {
+                    // two frames per ~30fps tick keeps the original ~0.8s desync window
+                    unstableFrames -= 2;
+                    if (unstableFrames <= 0) {
+                        unstableFrames = 0;
                         modeLabel.textContent = "STABLE LINK";
                         modeLabel.style.color = COLORS.stasisBlue;
                     }
                 }
-                requestAnimationFrame(animate);
             }
+
+            function syncSoundBtn() {
+                soundBtn.textContent = Sound.enabled ? "Sound: On" : "Sound: Off";
+                soundBtn.setAttribute("aria-pressed", String(Sound.enabled));
+            }
+
+            soundBtn.addEventListener("click", () => {
+                Sound.unlock();
+                Sound.toggle();
+                syncSoundBtn();
+            });
+            syncSoundBtn();
+
+            document.addEventListener("visibilitychange", () => {
+                if (document.hidden) {
+                    if (animationId !== null) {
+                        cancelAnimationFrame(animationId);
+                        animationId = null;
+                    }
+                } else if (animationId === null) {
+                    lastTick = 0;
+                    animationId = requestAnimationFrame(animate);
+                }
+            });
 
             initGrid();
             renderGauges();
             document.addEventListener("keydown", handleKeyDown);
-            requestAnimationFrame(animate);
+            animationId = requestAnimationFrame(animate);
         })();
     </script>
 </body>

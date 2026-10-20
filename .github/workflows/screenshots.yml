@@ -64,8 +64,13 @@ jobs:
 
           const pinpads = [
             { file: 'thermal-pinpad.html', output: 'thermal-pinpad-js.png', buttonId: 'randomBtn' },
-            { file: 'sevastolink-pinpad.html', output: 'sevastolink-pinpad-js.png', buttonId: 'randomBtn' },
-            { file: 'mr-robot-pinpad.html', output: 'mr-robot-pinpad-js.png', buttonId: 'randomBtn' },
+            { file: 'sevastolink-pinpad.html', output: 'sevastolink-pinpad-js.png' },
+            { file: 'mr-robot-pinpad.html', output: 'mr-robot-pinpad-js.png' },
+            { file: 'nostromo-pinpad.html', output: 'nostromo-pinpad-js.png' },
+            { file: 'wargames-pinpad.html', output: 'wargames-pinpad-js.png' },
+            { file: 'deusex-pinpad.html', output: 'deusex-pinpad-js.png' },
+            { file: 'deadspace-pinpad.html', output: 'deadspace-pinpad-js.png' },
+            { file: 'tron-pinpad.html', output: 'tron-pinpad-js.png' },
           ];
 
           (async () => {
@@ -90,12 +95,16 @@ jobs:
                 const page = await browser.newPage();
                 await page.setViewport({ width: 400, height: 500, deviceScaleFactor: 1 });
                 await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load' });
-                await new Promise((resolve) => setTimeout(resolve, 1000));
+                // Demos auto-enter a code ~0.6-0.9s after load; 2.2s lets the
+                // effect (heat glow / typed digits) become visible in the frame.
+                await new Promise((resolve) => setTimeout(resolve, 2200));
 
-                const button = await page.$(`#${pinpad.buttonId}`);
-                if (button) {
-                  await button.click();
-                  await new Promise((resolve) => setTimeout(resolve, 500));
+                if (pinpad.buttonId) {
+                  const button = await page.$(`#${pinpad.buttonId}`);
+                  if (button) {
+                    await button.click();
+                    await new Promise((resolve) => setTimeout(resolve, 500));
+                  }
                 }
 
                 await page.screenshot({ path: outputPath });

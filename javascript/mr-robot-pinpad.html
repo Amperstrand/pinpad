@@ -252,6 +252,44 @@
             letter-spacing: 0.5px;
             max-width: 320px;
         }
+
+        /* ===========================================
+           ACCESSIBILITY & MOTION PREFERENCES
+           =========================================== */
+        .btn:focus-visible,
+        .pin-display:focus-visible {
+            outline: 2px solid var(--cyan);
+            outline-offset: 2px;
+        }
+
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            margin: -1px;
+            padding: 0;
+            border: 0;
+            clip: rect(0 0 0 0);
+            clip-path: inset(50%);
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .keyboard-hint {
+            margin-top: 10px;
+            font-size: 9px;
+            color: var(--dim-green);
+            text-align: center;
+            letter-spacing: 0.5px;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -273,9 +311,10 @@
         </div>
 
         <!-- PIN Entry Display -->
-        <div class="pin-display" id="pinDisplay">
+        <div class="pin-display" id="pinDisplay" role="application" tabindex="0" aria-label="Mr. Robot FBI keypad. Type digits 0-9, Backspace or Escape to clear, Enter to submit." aria-roledescription="keypad">
             <canvas id="pinpadCanvas" width="280" height="340"></canvas>
         </div>
+        <p id="a11yStatus" role="status" class="visually-hidden"></p>
 
         <!-- Status Bar -->
         <div class="status-bar">
@@ -287,7 +326,10 @@
             <button class="btn" id="demoBtn">Demo</button>
             <button class="btn" id="resetBtn">Reset</button>
             <button class="btn" id="clearBtn">Clear PIN</button>
+            <button class="btn" id="soundBtn" type="button" aria-pressed="true">Sound: On</button>
         </div>
+
+        <div class="keyboard-hint">Keyboard: 0-9 · Backspace/Esc clear · Enter submit · D demo · S sound</div>
     </div>
 
     <div class="instructions">
@@ -302,6 +344,67 @@
 
         (function() {
             'use strict';
+
+            // ===========================================
+            // SOUND MODULE (WebAudio, no external assets)
+            // ===========================================
+            const Sound = (() => {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                let ctx = null, master = null, noiseBuf = null;
+                let enabled = (() => { try { const v = localStorage.getItem('pinpad:sound'); return v === null ? true : v === '1'; } catch (e) { return true; } })();
+                function save() { try { localStorage.setItem('pinpad:sound', enabled ? '1' : '0'); } catch (e) {} }
+                function unlock() {
+                    if (!AC) return;
+                    if (!ctx) {
+                        ctx = new AC();
+                        master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+                        const len = Math.floor(ctx.sampleRate * 0.05);
+                        noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+                        const d = noiseBuf.getChannelData(0);
+                        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+                    }
+                    if (ctx.state === 'suspended') ctx.resume();
+                }
+                function tone(freq, dur, type, peak, slideTo) {
+                    if (!enabled || !ctx || ctx.state !== 'running') return;
+                    const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+                    o.type = type; o.frequency.setValueAtTime(freq, t);
+                    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur * 0.8);
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                    o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+                }
+                function thud(peak, cutoff) { // filtered noise burst = mechanical clunk
+                    if (!enabled || !ctx || ctx.state !== 'running' || !noiseBuf) return;
+                    const t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = noiseBuf;
+                    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+                    const g = ctx.createGain();
+                    g.gain.setValueAtTime(0.0001, t);
+                    g.gain.exponentialRampToValueAtTime(peak, t + 0.002);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+                    s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + 0.07);
+                }
+                return {
+                    unlock, tone, thud,
+                    key()    { TUNING.key(); },     // digit press
+                    action() { TUNING.action(); },  // submit/enter
+                    error()  { TUNING.error(); },
+                    success(){ TUNING.success(); },
+                    toggle() { enabled = !enabled; save(); return enabled; },
+                    get enabled() { return enabled; }
+                };
+            })();
+
+            // MR. ROBOT tuning: soft phosphor beeps, double low buzz on deny
+            const TUNING = {
+                key()     { Sound.tone(1000, 0.045, 'sine', 0.07); },
+                action()  { Sound.tone(1245, 0.06, 'sine', 0.08); },
+                error()   { Sound.tone(220, 0.08, 'square', 0.08); setTimeout(() => Sound.tone(220, 0.08, 'square', 0.08), 150); },
+                success() { Sound.tone(880, 0.15, 'sine', 0.08); }
+            };
+
+            const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)');
 
             // ===========================================
             // CONFIGURATION CONSTANTS
@@ -381,21 +484,31 @@
                 demoInterval: null,
                 demoTimeouts: [],
 
+                // Frozen-frame guard: set on first real user interaction
+                userInteracted: false,
+
+                // Page Visibility (paused timers)
+                clockInterval: null,
+
+                // Device pixel ratio (set by fitCanvas)
+                dpr: 1,
+
                 // Animation
                 lastFrameTime: 0,
                 animationId: null,
                 cursorBlinkState: true,
                 lastCursorBlink: 0,
 
-                // Film grain cache (~10fps)
-                grainImageData: null,
+                // Film grain cache (~10fps), offscreen canvas so it composites over the keypad
+                grainCanvas: null,
                 lastGrainUpdate: 0,
 
                 // UI references
                 canvas: null,
                 ctx: null,
                 statusText: null,
-                terminalOutput: null
+                terminalOutput: null,
+                a11yStatus: null
             };
 
             // ===========================================
@@ -407,24 +520,51 @@
                 state.ctx = state.canvas.getContext('2d');
                 state.statusText = document.getElementById('statusText');
                 state.terminalOutput = document.getElementById('terminalOutput');
+                state.a11yStatus = document.getElementById('a11yStatus');
 
                 // Initialize button states
                 CONFIG.BUTTONS.forEach(label => {
                     state.buttonStates.set(label, null);
                 });
 
+                // DPR-aware canvas backing store (draw code stays in logical px)
+                fitCanvas();
+
                 // Setup event listeners
                 setupEventListeners();
 
                 // Start clock
                 updateClock();
-                setInterval(updateClock, 1000);
+                state.clockInterval = setInterval(updateClock, 1000);
 
                 // Start animation loop
                 startAnimation();
 
                 // Initial status
                 updateStatus('READY - Enter PIN to authenticate');
+                syncSoundBtn();
+
+                // Frozen-frame liveliness: type one boot command if the
+                // user hasn't interacted and demo mode isn't running
+                setTimeout(() => {
+                    if (!state.userInteracted && !state.demoMode) {
+                        typeTerminalCommand('nmap -sT 192.168.0.1-254', null);
+                    }
+                }, 600);
+            }
+
+            // ===========================================
+            // DPR-AWARE CANVAS
+            // ===========================================
+            function fitCanvas() {
+                const dpr = Math.min(window.devicePixelRatio || 1, 2);
+                state.dpr = dpr;
+                state.canvas.style.width = CONFIG.CANVAS_WIDTH + 'px';
+                state.canvas.style.height = CONFIG.CANVAS_HEIGHT + 'px';
+                state.canvas.width = Math.round(CONFIG.CANVAS_WIDTH * dpr);
+                state.canvas.height = Math.round(CONFIG.CANVAS_HEIGHT * dpr);
+                state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                state.grainCanvas = null; // regenerate at device resolution
             }
 
             // ===========================================
@@ -442,7 +582,51 @@
                 // Button controls
                 document.getElementById('demoBtn').addEventListener('click', toggleDemoMode);
                 document.getElementById('resetBtn').addEventListener('click', resetAll);
-                document.getElementById('clearBtn').addEventListener('click', clearPin);
+                document.getElementById('clearBtn').addEventListener('click', () => {
+                    Sound.unlock();
+                    clearPin();
+                });
+                document.getElementById('soundBtn').addEventListener('click', toggleSound);
+
+                // First real user interaction gates the auto-typed boot command
+                const markInteracted = () => { state.userInteracted = true; };
+                document.addEventListener('pointerdown', markInteracted, true);
+                document.addEventListener('keydown', markInteracted, true);
+
+                // Pause every loop/timer while the tab is hidden
+                document.addEventListener('visibilitychange', handleVisibilityChange);
+            }
+
+            // ===========================================
+            // PAGE VISIBILITY PAUSE
+            // ===========================================
+            function handleVisibilityChange() {
+                if (document.hidden) {
+                    if (state.animationId !== null) {
+                        cancelAnimationFrame(state.animationId);
+                        state.animationId = null;
+                    }
+                    if (state.clockInterval !== null) {
+                        clearInterval(state.clockInterval);
+                        state.clockInterval = null;
+                    }
+                    if (state.demoMode) {
+                        stopDemoSequence(); // clears 5s interval + pending demo timeouts
+                    }
+                } else {
+                    if (state.animationId === null) {
+                        state.lastFrameTime = 0;
+                        state.lastCursorBlink = 0;
+                        startAnimation();
+                    }
+                    if (state.clockInterval === null) {
+                        updateClock();
+                        state.clockInterval = setInterval(updateClock, 1000);
+                    }
+                    if (state.demoMode) {
+                        startDemoSequence();
+                    }
+                }
             }
 
             function handleCanvasMouseMove(event) {
@@ -460,6 +644,7 @@
              * Handle click on canvas to detect button press
              */
             function handleCanvasClick(event) {
+                Sound.unlock();
                 const rect = state.canvas.getBoundingClientRect();
                 const x = event.clientX - rect.left;
                 const y = event.clientY - rect.top;
@@ -474,6 +659,11 @@
              * Handle keyboard input
              */
             function handleKeyPress(event) {
+                // Never hijack browser/shortcut combos (Ctrl+C, Cmd+R, ...)
+                if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+                Sound.unlock();
+
                 const key = event.key;
                 let consumed = false;
 
@@ -490,6 +680,16 @@
                 // Escape/Backspace for clear
                 else if (key === 'Escape' || key === 'Backspace') {
                     pressButton('C');
+                    consumed = true;
+                }
+                // D toggles demo mode
+                else if (key === 'd' || key === 'D') {
+                    toggleDemoMode();
+                    consumed = true;
+                }
+                // S toggles sound
+                else if (key === 's' || key === 'S') {
+                    toggleSound();
                     consumed = true;
                 }
 
@@ -538,8 +738,10 @@
                 // Handle special buttons
                 if (label === 'C') {
                     // Clear
+                    Sound.key();
                     clearPin();
                     addTerminalLine('[*] PIN cleared', 'status');
+                    announce('PIN cleared');
                 } else if (label === 'E') {
                     // Enter - verify PIN
                     verifyPin();
@@ -548,7 +750,9 @@
                     if (state.enteredPin.length < CONFIG.MAX_PIN_LENGTH) {
                         state.enteredPin += label;
                         updatePinDisplay();
+                        Sound.key();
                         addTerminalLine(`${CONFIG.TERMINAL_PROMPT} keytap ${label}`, 'prompt');
+                        announce(`${label}. ${state.enteredPin.length} digit${state.enteredPin.length === 1 ? '' : 's'} entered`);
                     }
                 }
 
@@ -567,22 +771,29 @@
              */
             function verifyPin() {
                 if (state.enteredPin.length === 0) {
+                    Sound.error();
                     addTerminalLine('[!] No PIN entered', 'status error');
                     updateStatus('ERROR - No PIN entered');
+                    announce('No PIN entered');
                     return;
                 }
 
+                Sound.action();
                 addTerminalLine(`[*] Verifying PIN: ${'*'.repeat(state.enteredPin.length)}`, 'status');
 
                 if (state.enteredPin === CONFIG.CORRECT_PIN) {
+                    Sound.success();
                     addTerminalLine('[+] ACCESS GRANTED', 'status success');
                     addTerminalLine('[+] Femtocell interception active', 'status success');
                     addTerminalLine('[+] Data exfiltration in progress...', 'status success');
                     updateStatus('ACCESS GRANTED - Welcome, fsociety');
+                    announce('ACCESS GRANTED');
                 } else {
+                    Sound.error();
                     addTerminalLine('[-] ACCESS DENIED', 'status error');
                     addTerminalLine('[!] Invalid PIN. Attempts logged.', 'status error');
                     updateStatus('ACCESS DENIED - Invalid PIN');
+                    announce('ACCESS DENIED');
                 }
 
                 // Clear PIN after attempt
@@ -603,6 +814,7 @@
              * Reset all state
              */
             function resetAll() {
+                Sound.unlock();
                 clearPin();
                 CONFIG.BUTTONS.forEach(label => {
                     state.buttonStates.set(label, null);
@@ -610,12 +822,14 @@
                 clearTerminal();
                 addTerminalLine('[*] System reset', 'status');
                 updateStatus('System reset - Ready');
+                announce('System reset');
             }
 
             /**
              * Toggle demo mode on/off
              */
             function toggleDemoMode() {
+                Sound.unlock();
                 state.demoMode = !state.demoMode;
                 const btn = document.getElementById('demoBtn');
 
@@ -785,6 +999,28 @@
             }
 
             /**
+             * Update screen-reader status region
+             */
+            function announce(text) {
+                state.a11yStatus.textContent = text;
+            }
+
+            /**
+             * Toggle sound on/off (button + S key)
+             */
+            function toggleSound() {
+                Sound.unlock();
+                syncSoundBtn(Sound.toggle());
+            }
+
+            function syncSoundBtn(enabled) {
+                const btn = document.getElementById('soundBtn');
+                const on = enabled === undefined ? Sound.enabled : enabled;
+                btn.textContent = on ? 'Sound: On' : 'Sound: Off';
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            }
+
+            /**
              * Update clock display
              */
             function updateClock() {
@@ -831,9 +1067,9 @@
                 const ctx = state.ctx;
                 const canvas = state.canvas;
 
-                // Clear canvas with deep black
+                // Clear canvas with deep black (logical coords; transform handles DPR)
                 ctx.fillStyle = CONFIG.DEEP_BLACK;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
 
                 // Draw subtle background gradient
                 drawBackground(ctx, canvas);
@@ -854,13 +1090,13 @@
              */
             function drawBackground(ctx, canvas) {
                 const gradient = ctx.createRadialGradient(
-                    canvas.width / 2, canvas.height / 2, 0,
-                    canvas.width / 2, canvas.height / 2, canvas.width
+                    CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2, 0,
+                    CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2, CONFIG.CANVAS_WIDTH
                 );
                 gradient.addColorStop(0, 'rgba(0, 30, 0, 0.3)');
                 gradient.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
                 ctx.fillStyle = gradient;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
             }
 
             /**
@@ -981,6 +1217,15 @@
                     const offset = CONFIG.CHROMATIC_OFFSET;
                     const alpha = isPressed ? 0.45 : 0.3;
 
+                    if (REDUCED.matches) {
+                        // Reduced motion: single stable border, no channel-split jitter
+                        ctx.strokeStyle = `rgba(0, 255, 65, ${alpha})`;
+                        ctx.lineWidth = 1;
+                        roundRect(ctx, pos.x, pos.y, CONFIG.BUTTON_WIDTH, CONFIG.BUTTON_HEIGHT, 3);
+                        ctx.stroke();
+                        return;
+                    }
+
                     // Red channel shifted left
                     ctx.strokeStyle = `rgba(255, 60, 70, ${alpha * 0.45})`;
                     ctx.lineWidth = 1;
@@ -1038,42 +1283,44 @@
             }
 
             function drawFilmGrain(ctx, canvas) {
+                // Film grain is pure decorative motion — skip under reduced motion
+                if (REDUCED.matches) return;
+
                 const now = performance.now();
 
-                if (!state.grainImageData || now - state.lastGrainUpdate >= CONFIG.GRAIN_UPDATE_INTERVAL) {
-                    state.grainImageData = generateFilmGrain(canvas);
+                if (!state.grainCanvas || now - state.lastGrainUpdate >= CONFIG.GRAIN_UPDATE_INTERVAL) {
+                    state.grainCanvas = generateFilmGrain(state.grainCanvas, canvas);
                     state.lastGrainUpdate = now;
                 }
 
-                if (state.grainImageData) {
-                    ctx.putImageData(state.grainImageData, 0, 0);
+                if (state.grainCanvas) {
+                    // drawImage composites on top; putImageData would erase the keypad
+                    ctx.drawImage(state.grainCanvas, 0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
                 }
             }
 
-            function generateFilmGrain(canvas) {
-                const imageData = state.ctx.createImageData(canvas.width, canvas.height);
-                const data = imageData.data;
-
-                for (let i = 0; i < data.length; i += 4) {
-                    data[i] = 0;
-                    data[i + 1] = 0;
-                    data[i + 2] = 0;
-                    data[i + 3] = 0;
+            function generateFilmGrain(grainCanvas, canvas) {
+                if (!grainCanvas) {
+                    grainCanvas = document.createElement('canvas');
                 }
+                if (grainCanvas.width !== canvas.width || grainCanvas.height !== canvas.height) {
+                    grainCanvas.width = canvas.width;
+                    grainCanvas.height = canvas.height;
+                }
+                const g = grainCanvas.getContext('2d');
+                g.clearRect(0, 0, grainCanvas.width, grainCanvas.height);
 
-                for (let i = 0; i < CONFIG.NOISE_POINTS; i++) {
-                    const x = Math.floor(Math.random() * canvas.width);
-                    const y = Math.floor(Math.random() * canvas.height);
-                    const idx = (y * canvas.width + x) * 4;
-
+                // Scale point count with backing-store area to keep density constant across DPR
+                const points = Math.round(CONFIG.NOISE_POINTS * state.dpr * state.dpr);
+                for (let i = 0; i < points; i++) {
+                    const x = Math.floor(Math.random() * grainCanvas.width);
+                    const y = Math.floor(Math.random() * grainCanvas.height);
                     const glow = 18 + Math.floor(Math.random() * 28);
-                    data[idx] = 0;
-                    data[idx + 1] = Math.min(255, glow + 24);
-                    data[idx + 2] = Math.floor(glow * 0.35);
-                    data[idx + 3] = Math.floor(0.08 * 255);
+                    g.fillStyle = `rgba(0, ${Math.min(255, glow + 24)}, ${Math.floor(glow * 0.35)}, 0.08)`;
+                    g.fillRect(x, y, 1, 1);
                 }
 
-                return imageData;
+                return grainCanvas;
             }
 
             /**
